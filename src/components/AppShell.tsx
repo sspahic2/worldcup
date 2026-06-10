@@ -1,0 +1,334 @@
+'use client';
+
+import { useState, useEffect, useCallback, useMemo, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCompetitionData } from '@/lib/adapters/context';
+import { useAuth } from '@/lib/permissions/context';
+import { submitPick } from '@/app/actions/picks';
+import type { MatchInfo } from '@/lib/adapters/types';
+import type { Resource } from '@/lib/permissions/types';
+import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
+import { BottomNav } from '@/components/layout/BottomNav';
+import { GroupSwitcher } from '@/components/layout/GroupSwitcher';
+import { Dashboard } from '@/components/dashboard/Dashboard';
+import { PickFlow } from '@/components/pick/PickFlow';
+import { PickConfirmation } from '@/components/pick/PickConfirmation';
+import { Bracket } from '@/components/bracket/Bracket';
+import { Leaderboard } from '@/components/leaderboard/Leaderboard';
+import { Profile } from '@/components/profile/Profile';
+import { Landing } from '@/components/landing/Landing';
+import { Admin } from '@/components/admin/Admin';
+import { EliminatedState } from '@/components/states/EliminatedState';
+import { WinnerState } from '@/components/states/WinnerState';
+import { EmptyState } from '@/components/states/EmptyState';
+import { Redemption } from '@/components/pick/Redemption';
+import { AccessDenied } from '@/components/states/AccessDenied';
+import type { UserPool } from '@/types';
+
+type MatchData = {
+  id?: number;
+  md: number | string;
+  a: string;
+  b: string;
+  venue: string;
+  date: string;
+  utcDate?: string;
+  knockout?: boolean;
+};
+
+const VIEW_RESOURCE_MAP: Record<string, Resource> = {
+  landing: 'landing',
+  dashboard: 'dashboard',
+  pick: 'pick',
+  confirmation: 'pick',
+  bracket: 'bracket',
+  leaderboard: 'leaderboard',
+  redemption: 'redemption',
+  profile: 'profile',
+  admin: 'admin',
+  eliminated: 'dashboard',
+  winner: 'dashboard',
+};
+
+interface AppShellProps {
+  initialPool?: UserPool | null;
+}
+
+export function AppShell({ initialPool }: AppShellProps = {}) {
+  const router = useRouter();
+  const competitionData = useCompetitionData();
+  const { user, loading, canVisit, signOut, isAuthenticated } = useAuth();
+  const [, startTransition] = useTransition();
+
+  const groupKeys = competitionData.groups.map((g) => g.key);
+
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [view, setView] = useState(() => 'landing');
+  const [groupKey, setGroupKey] = useState(groupKeys[0] || 'A');
+  const [pickMatch, setPickMatch] = useState<MatchData | null>(null);
+  const [lastPick, setLastPick] = useState<{ team: string; match: MatchData } | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
+  const [pool, setPool] = useState<UserPool | null>(initialPool ?? null);
+  const [isDesktop, setIsDesktop] = useState(true);
+
+  useEffect(() => {
+    setPool(initialPool ?? null);
+  }, [initialPool]);
+
+  useEffect(() => {
+    if (!loading && isAuthenticated && view === 'landing') {
+      setView('dashboard');
+    }
+  }, [loading, isAuthenticated, view]);
+
+  useEffect(() => {
+    const check = () => setIsDesktop(window.innerWidth >= 1024);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (theme === 'dark') {
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+    }
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  }, []);
+
+  const groupMatches: MatchInfo[] = useMemo(
+    () => competitionData.matchesByGroup[groupKey] || [],
+    [competitionData.matchesByGroup, groupKey],
+  );
+
+  const groupTeams = useMemo(() => {
+    const g = competitionData.groups.find((gr) => gr.key === groupKey);
+    return g?.teams || [];
+  }, [competitionData.groups, groupKey]);
+
+  const onPickMatch = (match: MatchData) => {
+    setPickMatch(match);
+    setView('pick');
+  };
+
+  const onConfirmPick = (team: string) => {
+    if (!pickMatch || !pool) return;
+    setPickError(null);
+
+    if (!pool.memberId) {
+      setPickError('No active membership');
+      return;
+    }
+
+    const stageKey = pool.stage;
+    const fdMatchId = pickMatch.id;
+
+    startTransition(async () => {
+      try {
+        await submitPick({
+          poolMemberId: pool.memberId!,
+          stage: stageKey,
+          teamCode: team,
+          fdMatchId,
+        });
+        setLastPick({ team, match: pickMatch });
+        setView('confirmation');
+        router.refresh();
+      } catch (e) {
+        setPickError(e instanceof Error ? e.message : 'Failed to submit pick');
+      }
+    });
+  };
+
+  const navigateTo = (nextView: string) => {
+    const resource = VIEW_RESOURCE_MAP[nextView] || 'landing';
+    const ctx = pool
+      ? { poolId: pool.poolId, memberStatus: pool.status as 'alive' | 'redemption' | 'eliminated' | 'won' }
+      : undefined;
+    if (canVisit(resource, ctx)) {
+      setView(nextView);
+    } else if (!user) {
+      setView('landing');
+    } else {
+      setView('access-denied');
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    setView('landing');
+  };
+
+  const renderBody = () => {
+    if (loading) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-bg">
+          <div className="flex items-center gap-3 text-ink-3">
+            <div className="h-5 w-5 rounded-full border-2 border-survive-accent border-t-transparent animate-spin" />
+            Loading...
+          </div>
+        </div>
+      );
+    }
+
+    if (view === 'access-denied')
+      return <AccessDenied onBack={() => setView('dashboard')} />;
+
+    if (view === 'landing')
+      return <Landing onEnter={() => {
+        if (isAuthenticated) {
+          navigateTo('dashboard');
+        } else {
+          window.location.href = '/login';
+        }
+      }} desktop={isDesktop} />;
+
+    if (view === 'dashboard' && pool)
+      return (
+        <Dashboard
+          groupKey={groupKey}
+          pool={pool}
+          groupTeams={groupTeams}
+          groupMatches={groupMatches}
+          crestLookup={competitionData.crestLookup}
+          teamLookup={competitionData.teamLookup}
+          onPick={onPickMatch}
+          onOpenBracket={() => setView('bracket')}
+          onOpenLeaderboard={() => setView('leaderboard')}
+          onOpenRedemption={() => setView('redemption')}
+          desktop={isDesktop}
+        />
+      );
+
+    if (view === 'pick' && pickMatch)
+      return (
+        <PickFlow
+          match={pickMatch}
+          usedTeams={Object.values(pool?.picks || {}).filter((v): v is string => !!v && !v.endsWith('_L'))}
+          onConfirm={onConfirmPick}
+          onBack={() => { setPickError(null); setView('dashboard'); }}
+          error={pickError}
+        />
+      );
+
+    if (view === 'confirmation' && lastPick)
+      return (
+        <PickConfirmation
+          team={lastPick.team}
+          match={lastPick.match}
+          onDone={() => setView('dashboard')}
+        />
+      );
+
+    if (view === 'bracket' && pool)
+      return <Bracket groupKey={groupKey} pool={pool} desktop={isDesktop} />;
+
+    if (view === 'redemption' && pool)
+      return (
+        <Redemption
+          groupKey={groupKey}
+          pool={pool}
+          onPick={() => setView('confirmation')}
+          onBack={() => setView('dashboard')}
+        />
+      );
+
+    if (view === 'leaderboard' && pool)
+      return <Leaderboard groupKey={groupKey} pool={pool} desktop={isDesktop} />;
+
+    if (view === 'profile')
+      return (
+        <Profile
+          onOpenGroup={(k: string) => {
+            setGroupKey(k);
+            setView('dashboard');
+          }}
+          desktop={isDesktop}
+        />
+      );
+
+    if (view === 'admin')
+      return <Admin onClose={() => setView('dashboard')} desktop={isDesktop} />;
+
+    if (view === 'eliminated')
+      return <EliminatedState groupKey={groupKey} team={groupTeams[0]?.code || 'USA'} onBack={() => setView('profile')} />;
+
+    if (view === 'winner')
+      return (
+        <WinnerState
+          groupKey={groupKey}
+          team={groupTeams[0]?.code || 'USA'}
+          pot={1760}
+          onBack={() => setView('profile')}
+        />
+      );
+
+    return <EmptyState onJoin={() => setView('dashboard')} />;
+  };
+
+  if (isDesktop) {
+    return (
+      <div className="min-h-screen bg-bg">
+        {view === 'landing' ? (
+          renderBody()
+        ) : (
+          <div className="flex">
+            <DesktopSidebar
+              view={view}
+              onNav={navigateTo}
+              groupKey={groupKey}
+              onGroupChange={setGroupKey}
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              onSignOut={handleSignOut}
+              groupKeys={groupKeys}
+              pool={pool}
+            />
+            <div className="flex-1 min-w-0 max-w-[1200px]">
+              {['dashboard', 'bracket', 'leaderboard'].includes(view) && pool && (
+                <div className="flex gap-2 flex-wrap px-10 pt-5">
+                  {groupKeys.map((k) => {
+                    const active = groupKey === k;
+                    return (
+                      <button
+                        key={k}
+                        onClick={() => setGroupKey(k)}
+                        className={`flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-semibold whitespace-nowrap ${
+                          active
+                            ? 'border-ink bg-ink text-bg'
+                            : 'border-survive-border bg-surface text-ink-2'
+                        }`}
+                      >
+                        Group {k}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {renderBody()}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-bg">
+      {['dashboard', 'bracket', 'leaderboard'].includes(view) && pool && (
+        <GroupSwitcher current={groupKey} onChange={setGroupKey} groupKeys={groupKeys} />
+      )}
+      <div className={['dashboard', 'bracket', 'leaderboard', 'profile'].includes(view) ? 'pb-24' : ''}>
+        {renderBody()}
+      </div>
+      {['dashboard', 'bracket', 'leaderboard', 'profile'].includes(view) && (
+        <BottomNav view={view} onNav={setView} />
+      )}
+    </div>
+  );
+}
