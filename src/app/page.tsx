@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { CompetitionDataProvider } from '@/lib/adapters/context';
 import { fetchCompetitionData } from '@/lib/adapters/football-data-adapter';
@@ -31,7 +32,18 @@ async function getCompetitionDataSafe(): Promise<CompetitionData> {
   }
 }
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ code?: string }>;
+}) {
+  // Magic links built from a stale Supabase Site URL land on "/?code=..."
+  // instead of the auth callback — forward them so the code gets exchanged.
+  const { code } = await searchParams;
+  if (code) {
+    redirect(`/auth/callback?code=${encodeURIComponent(code)}`);
+  }
+
   const [competitionData, authUser, pool, leaderboard, profile] = await Promise.all([
     getCompetitionDataSafe(),
     getAuthUser(),

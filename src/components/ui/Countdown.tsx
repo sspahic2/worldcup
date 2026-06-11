@@ -53,7 +53,7 @@ export function Countdown({ kickoffUtc, label }: CountdownProps) {
           width: 6,
           height: 6,
           borderRadius: 999,
-          background: locked ? 'var(--ink-4)' : 'var(--accent)',
+          background: locked ? 'var(--ink-4)' : 'var(--survive-accent)',
         }}
         className={locked ? undefined : 'animate-pulse-glow'}
         suppressHydrationWarning

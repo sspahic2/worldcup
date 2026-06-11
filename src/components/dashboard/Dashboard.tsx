@@ -144,7 +144,7 @@ export function Dashboard({
               padding: desktop ? 24 : 16,
               gridColumn: desktop ? 'span 1' : 'span 2',
               background: desktop
-                ? 'linear-gradient(135deg, color-mix(in oklab, var(--accent) 10%, var(--surface)) 0%, var(--surface) 60%)'
+                ? 'linear-gradient(135deg, color-mix(in oklab, var(--survive-accent) 10%, var(--surface)) 0%, var(--surface) 60%)'
                 : 'var(--surface)',
             }}
           >

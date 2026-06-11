@@ -43,7 +43,7 @@ export function BottomNav({ view, onNav }: BottomNavProps) {
               flexDirection: 'column',
               alignItems: 'center',
               gap: 3,
-              color: active ? 'var(--accent)' : 'var(--ink-3)',
+              color: active ? 'var(--survive-accent)' : 'var(--ink-3)',
             }}
           >
             <Icon name={it.icon} size={20} />

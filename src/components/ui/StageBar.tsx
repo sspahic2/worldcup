@@ -20,7 +20,7 @@ export function StageBar({ current, status }: { current: string; status: PoolSta
         const red = status === 'redemption' && s === 'QF';
         let bg = 'var(--border)';
         if (done) bg = 'var(--ink-3)';
-        if (now) bg = 'var(--accent)';
+        if (now) bg = 'var(--survive-accent)';
         if (elim) bg = 'var(--eliminated)';
         if (red) bg = 'var(--redemption)';
 
