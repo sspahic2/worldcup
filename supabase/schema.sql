@@ -323,3 +323,15 @@ alter publication supabase_realtime add table public.picks;
 alter table public.match_cache replica identity full;
 alter table public.pool_members replica identity full;
 alter table public.picks replica identity full;
+
+-- ── Cron scheduling (pg_cron + pg_net; Vercel Hobby has no frequent crons) ──
+-- See supabase/migrations/20260611_pg_cron_schedules.sql. Config rows
+-- (app_url, cron_secret) are seeded manually into cron_config — never commit them.
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+
+create table if not exists public.cron_config (
+  key text primary key,
+  value text not null
+);
+alter table public.cron_config enable row level security;
