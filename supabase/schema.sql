@@ -144,12 +144,70 @@ create policy "Members can view picks in their pools"
     )
   );
 
+-- User-level writes on picks require the referenced match to be in the cache
+-- and outside the lock window (kickoff more than 60 minutes away).
+-- NOTE: 60 must match LOCK_BEFORE_KICKOFF_MINUTES in src/lib/picks/lock-rules.ts.
 create policy "Members can insert their own picks"
   on public.picks for insert with check (
     exists (
       select 1 from public.pool_members pm
       where pm.id = picks.pool_member_id
       and pm.user_id = auth.uid()
+    )
+    and picks.fd_match_id is not null
+    and exists (
+      select 1 from public.match_cache mc
+      where mc.fd_match_id = picks.fd_match_id
+      and now() < mc.utc_date - interval '60 minutes'
+    )
+  );
+
+-- Users may change a pick only while it is their own, still unresolved and
+-- still outside the lock window. Result resolution (pending → won/lost) runs
+-- through the service-role client, which bypasses RLS entirely.
+create policy "Members can update their own pending picks"
+  on public.picks for update using (
+    exists (
+      select 1 from public.pool_members pm
+      where pm.id = picks.pool_member_id
+      and pm.user_id = auth.uid()
+    )
+    and picks.result = 'pending'
+    and picks.fd_match_id is not null
+    and exists (
+      select 1 from public.match_cache mc
+      where mc.fd_match_id = picks.fd_match_id
+      and now() < mc.utc_date - interval '60 minutes'
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.pool_members pm
+      where pm.id = picks.pool_member_id
+      and pm.user_id = auth.uid()
+    )
+    and picks.result = 'pending'
+    and picks.fd_match_id is not null
+    and exists (
+      select 1 from public.match_cache mc
+      where mc.fd_match_id = picks.fd_match_id
+      and now() < mc.utc_date - interval '60 minutes'
+    )
+  );
+
+create policy "Members can delete their own pending picks"
+  on public.picks for delete using (
+    exists (
+      select 1 from public.pool_members pm
+      where pm.id = picks.pool_member_id
+      and pm.user_id = auth.uid()
+    )
+    and picks.result = 'pending'
+    and picks.fd_match_id is not null
+    and exists (
+      select 1 from public.match_cache mc
+      where mc.fd_match_id = picks.fd_match_id
+      and now() < mc.utc_date - interval '60 minutes'
     )
   );
 
@@ -179,6 +237,22 @@ alter table public.match_cache enable row level security;
 
 create policy "Match cache is publicly readable"
   on public.match_cache for select using (true);
+
+-- ── Notifications Sent ──────────────────────────────────────────
+-- Ledger of transactional emails already delivered, keyed by
+-- (user, type, stage) so re-runs never double-send. Stage-less types
+-- (welcome, winner) store stage = ''. Service-role only: RLS enabled
+-- with no policies.
+create table public.notifications_sent (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  type text not null,
+  stage text,
+  created_at timestamptz not null default now(),
+  unique nulls not distinct (user_id, type, stage)
+);
+
+alter table public.notifications_sent enable row level security;
 
 -- ── Views ───────────────────────────────────────────────────────
 
@@ -210,6 +284,7 @@ create index idx_pools_invite_code on public.pools(invite_code);
 create index idx_pools_group_key on public.pools(group_key);
 create index idx_match_cache_group on public.match_cache(group_key);
 create index idx_match_cache_status on public.match_cache(status);
+create index idx_notifications_sent_user_id on public.notifications_sent(user_id);
 
 -- ── Updated_at trigger ──────────────────────────────────────────
 create or replace function public.update_updated_at()

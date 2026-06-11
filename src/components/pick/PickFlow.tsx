@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Flag } from '@/components/ui/Flag';
 import { Icon } from '@/components/ui/Icon';
 import { Countdown } from '@/components/ui/Countdown';
@@ -15,7 +13,11 @@ import type { Match } from '@/types';
 interface PickFlowProps {
   match: Match;
   usedTeams: string[];
+  /** Existing (pending) pick for this stage, if the user is changing it. */
+  currentPick?: string | null;
   onConfirm: (team: string) => void;
+  /** Remove the existing pick for this stage. Only passed when one exists. */
+  onRemove?: () => void;
   onBack: () => void;
   error?: string | null;
 }
@@ -87,8 +89,10 @@ function TeamCard({
   );
 }
 
-export function PickFlow({ match, usedTeams, onConfirm, onBack, error }: PickFlowProps) {
-  const [selected, setSelected] = useState<string | null>(null);
+export function PickFlow({ match, usedTeams, currentPick, onConfirm, onRemove, onBack, error }: PickFlowProps) {
+  const [selected, setSelected] = useState<string | null>(
+    () => (currentPick && (currentPick === match.a || currentPick === match.b) ? currentPick : null),
+  );
   const [locking, setLocking] = useState(false);
   const [pickLocked, setPickLocked] = useState(
     () => match.utcDate ? isLocked(match.utcDate) : false,
@@ -141,7 +145,7 @@ export function PickFlow({ match, usedTeams, onConfirm, onBack, error }: PickFlo
           <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>
             {match.date} &middot; {match.venue}
           </span>
-          <Countdown kickoffUtc={match.utcDate} />
+          {match.utcDate && <Countdown kickoffUtc={match.utcDate} />}
         </div>
       </div>
 
@@ -224,8 +228,26 @@ export function PickFlow({ match, usedTeams, onConfirm, onBack, error }: PickFlo
           }}
         >
           <Icon name="lock" size={16} />
-          {pickLocked ? 'Picks closed' : locking ? 'Locking pick…' : 'Lock pick'}
+          {pickLocked
+            ? 'Picks closed'
+            : locking
+              ? 'Saving pick…'
+              : currentPick
+                ? 'Change pick'
+                : 'Lock pick'}
         </button>
+        {currentPick && onRemove && !pickLocked && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={locking}
+            onClick={onRemove}
+            className="gap-1.5 text-ink-3 hover:text-redemption"
+          >
+            <Icon name="close" size={14} />
+            Remove pick ({TEAMS[currentPick] ?? currentPick})
+          </Button>
+        )}
         <span
           style={{
             fontSize: 11,
@@ -233,7 +255,9 @@ export function PickFlow({ match, usedTeams, onConfirm, onBack, error }: PickFlo
             textAlign: 'center',
           }}
         >
-          Picks close {LOCK_BEFORE_KICKOFF_MINUTES} minutes before kickoff.
+          {currentPick
+            ? `You can change or remove your pick until ${LOCK_BEFORE_KICKOFF_MINUTES} minutes before kickoff.`
+            : `Picks close ${LOCK_BEFORE_KICKOFF_MINUTES} minutes before kickoff.`}
         </span>
       </div>
     </div>

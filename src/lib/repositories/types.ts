@@ -98,7 +98,7 @@ export type PickCreate = Pick<PlayerPick, 'poolMemberId' | 'stage' | 'teamCode'>
   fdMatchId?: number;
 };
 
-export type PickUpdate = Partial<Pick<PlayerPick, 'result'>>;
+export type PickUpdate = Partial<Pick<PlayerPick, 'result' | 'teamCode' | 'fdMatchId'>>;
 
 // ── Repository interfaces ───────────────────────────────────────
 

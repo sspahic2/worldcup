@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation';
 import { useCompetitionData } from '@/lib/adapters/context';
 import { useAuth } from '@/lib/permissions/context';
-import { submitPick } from '@/app/actions/picks';
+import { submitPick, deletePick } from '@/app/actions/picks';
+import { usedTeams, currentStagePick } from '@/lib/picks/pick-codes';
 import type { MatchInfo } from '@/lib/adapters/types';
 import type { Resource } from '@/lib/permissions/types';
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
@@ -23,7 +24,7 @@ import { WinnerState } from '@/components/states/WinnerState';
 import { EmptyState } from '@/components/states/EmptyState';
 import { Redemption } from '@/components/pick/Redemption';
 import { AccessDenied } from '@/components/states/AccessDenied';
-import type { UserPool } from '@/types';
+import type { UserPool, LeaderboardEntry, ProfileData } from '@/types';
 
 type MatchData = {
   id?: number;
@@ -52,9 +53,11 @@ const VIEW_RESOURCE_MAP: Record<string, Resource> = {
 
 interface AppShellProps {
   initialPool?: UserPool | null;
+  initialLeaderboard?: LeaderboardEntry[];
+  initialProfile?: ProfileData | null;
 }
 
-export function AppShell({ initialPool }: AppShellProps = {}) {
+export function AppShell({ initialPool, initialLeaderboard, initialProfile }: AppShellProps = {}) {
   const router = useRouter();
   const competitionData = useCompetitionData();
   const { user, loading, canVisit, signOut, isAuthenticated } = useAuth();
@@ -68,12 +71,9 @@ export function AppShell({ initialPool }: AppShellProps = {}) {
   const [pickMatch, setPickMatch] = useState<MatchData | null>(null);
   const [lastPick, setLastPick] = useState<{ team: string; match: MatchData } | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
-  const [pool, setPool] = useState<UserPool | null>(initialPool ?? null);
   const [isDesktop, setIsDesktop] = useState(true);
 
-  useEffect(() => {
-    setPool(initialPool ?? null);
-  }, [initialPool]);
+  const pool: UserPool | null = initialPool ?? null;
 
   useEffect(() => {
     if (!loading && isAuthenticated && view === 'landing') {
@@ -111,6 +111,13 @@ export function AppShell({ initialPool }: AppShellProps = {}) {
     return g?.teams || [];
   }, [competitionData.groups, groupKey]);
 
+  // Members still alive (excludes redemption) — the pot splits between these,
+  // matching the leaderboard/profile pot-share rule.
+  const aliveCount = useMemo(
+    () => (initialLeaderboard ?? []).filter((e) => e.status === 'alive').length,
+    [initialLeaderboard],
+  );
+
   const onPickMatch = (match: MatchData) => {
     setPickMatch(match);
     setView('pick');
@@ -141,6 +148,31 @@ export function AppShell({ initialPool }: AppShellProps = {}) {
         router.refresh();
       } catch (e) {
         setPickError(e instanceof Error ? e.message : 'Failed to submit pick');
+      }
+    });
+  };
+
+  // The user's pick for the current stage, if any (lost picks carry an `_L` suffix).
+  const stagePick = pool ? currentStagePick(pool.picks, pool.stage) : null;
+
+  const onRemovePick = () => {
+    if (!pool) return;
+    setPickError(null);
+
+    if (!pool.memberId) {
+      setPickError('No active membership');
+      return;
+    }
+
+    const stageKey = pool.stage;
+
+    startTransition(async () => {
+      try {
+        await deletePick({ poolMemberId: pool.memberId!, stage: stageKey });
+        setView('dashboard');
+        router.refresh();
+      } catch (e) {
+        setPickError(e instanceof Error ? e.message : 'Failed to remove pick');
       }
     });
   };
@@ -195,6 +227,7 @@ export function AppShell({ initialPool }: AppShellProps = {}) {
           pool={pool}
           groupTeams={groupTeams}
           groupMatches={groupMatches}
+          aliveCount={aliveCount}
           crestLookup={competitionData.crestLookup}
           teamLookup={competitionData.teamLookup}
           onPick={onPickMatch}
@@ -209,8 +242,10 @@ export function AppShell({ initialPool }: AppShellProps = {}) {
       return (
         <PickFlow
           match={pickMatch}
-          usedTeams={Object.values(pool?.picks || {}).filter((v): v is string => !!v && !v.endsWith('_L'))}
+          usedTeams={pool ? usedTeams(pool.picks, pool.stage) : []}
+          currentPick={stagePick}
           onConfirm={onConfirmPick}
+          onRemove={stagePick ? onRemovePick : undefined}
           onBack={() => { setPickError(null); setView('dashboard'); }}
           error={pickError}
         />
@@ -239,18 +274,16 @@ export function AppShell({ initialPool }: AppShellProps = {}) {
       );
 
     if (view === 'leaderboard' && pool)
-      return <Leaderboard groupKey={groupKey} pool={pool} desktop={isDesktop} />;
-
-    if (view === 'profile')
       return (
-        <Profile
-          onOpenGroup={(k: string) => {
-            setGroupKey(k);
-            setView('dashboard');
-          }}
+        <Leaderboard
+          groupKey={groupKey}
+          entries={initialLeaderboard ?? []}
           desktop={isDesktop}
         />
       );
+
+    if (view === 'profile')
+      return <Profile profile={initialProfile ?? null} desktop={isDesktop} />;
 
     if (view === 'admin')
       return <Admin onClose={() => setView('dashboard')} desktop={isDesktop} />;

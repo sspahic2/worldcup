@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/Icon';
 import type { UserPool } from '@/types';
 
@@ -10,7 +11,9 @@ interface DesktopSidebarProps {
   onGroupChange: (key: string) => void;
   theme: string;
   onToggleTheme: () => void;
-  pools: Record<string, UserPool | null>;
+  onSignOut: () => void;
+  groupKeys: string[];
+  pool: UserPool | null;
 }
 
 const NAV_ITEMS = [
@@ -29,9 +32,16 @@ export function DesktopSidebar({
   onGroupChange,
   theme,
   onToggleTheme,
-  pools,
+  onSignOut,
+  groupKeys,
+  pool,
 }: DesktopSidebarProps) {
-  const joined = Object.entries(pools).filter(([, v]) => v) as [string, UserPool][];
+  const dotColor =
+    pool?.status === 'alive'
+      ? 'var(--alive)'
+      : pool?.status === 'redemption'
+      ? 'var(--redemption)'
+      : 'var(--eliminated)';
 
   return (
     <div
@@ -107,15 +117,38 @@ export function DesktopSidebar({
         <div className="eyebrow" style={{ marginBottom: 8 }}>
           Your tracks
         </div>
+        {pool && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '8px 12px',
+              fontSize: 13,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 999,
+                background: dotColor,
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ color: 'var(--ink-2)', textTransform: 'capitalize' }}>{pool.status}</span>
+            <span
+              className="mono"
+              style={{ fontSize: 11, color: 'var(--ink-4)', marginLeft: 'auto' }}
+            >
+              ${(pool.pot / 1000).toFixed(1)}k
+            </span>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {joined.map(([k, v]) => {
+          {groupKeys.map((k) => {
             const active = groupKey === k;
-            const dotColor =
-              v.status === 'alive'
-                ? 'var(--alive)'
-                : v.status === 'redemption'
-                ? 'var(--redemption)'
-                : 'var(--eliminated)';
             return (
               <button
                 key={k}
@@ -130,28 +163,14 @@ export function DesktopSidebar({
                   padding: '8px 12px',
                   borderRadius: 8,
                   background: active ? 'var(--surface)' : 'transparent',
+                  color: active ? 'var(--ink)' : 'var(--ink-2)',
                   fontSize: 13,
                   textAlign: 'left',
                   whiteSpace: 'nowrap',
                 }}
               >
-                <span
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: 999,
-                    background: dotColor,
-                    flexShrink: 0,
-                  }}
-                />
                 <span className="display" style={{ fontSize: 14 }}>
                   Group {k}
-                </span>
-                <span
-                  className="mono"
-                  style={{ fontSize: 11, color: 'var(--ink-4)', marginLeft: 'auto' }}
-                >
-                  ${(v.pot / 1000).toFixed(1)}k
                 </span>
               </button>
             );
@@ -161,15 +180,26 @@ export function DesktopSidebar({
 
       <div style={{ flex: 1 }} />
 
-      {/* Theme toggle */}
-      <button
-        onClick={onToggleTheme}
-        className="btn btn-ghost btn-sm"
-        style={{ justifyContent: 'flex-start' }}
-      >
-        <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
-        {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-      </button>
+      {/* Theme toggle + sign out */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <button
+          onClick={onToggleTheme}
+          className="btn btn-ghost btn-sm"
+          style={{ justifyContent: 'flex-start' }}
+        >
+          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
+          {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+        </button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onSignOut}
+          className="justify-start gap-2 text-ink-2 hover:text-ink"
+        >
+          <Icon name="logout" size={14} />
+          Sign out
+        </Button>
+      </div>
     </div>
   );
 }

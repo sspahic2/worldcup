@@ -4,7 +4,7 @@ import { Flag } from '@/components/ui/Flag';
 import { TEAMS } from '@/lib/data/teams';
 import type { Match } from '@/types';
 
-function TeamSlot({ code, used, right }: { code: string; used: boolean; right?: boolean }) {
+function TeamSlot({ code, used, right, crest }: { code: string; used: boolean; right?: boolean; crest?: string }) {
   return (
     <div
       style={{
@@ -15,7 +15,7 @@ function TeamSlot({ code, used, right }: { code: string; used: boolean; right?: 
         opacity: used ? 0.35 : 1,
       }}
     >
-      <Flag code={code} size="lg" />
+      <Flag code={code} crest={crest} size="lg" />
       <div style={{ textAlign: right ? 'right' : 'left' }}>
         <div
           className="display"
@@ -34,10 +34,11 @@ function TeamSlot({ code, used, right }: { code: string; used: boolean; right?: 
 interface MatchCardProps {
   match: Match;
   usedTeams: string[];
+  crestLookup?: Record<string, string>;
   onPick: () => void;
 }
 
-export function MatchCard({ match, usedTeams, onPick }: MatchCardProps) {
+export function MatchCard({ match, usedTeams, crestLookup, onPick }: MatchCardProps) {
   const aUsed = usedTeams.includes(match.a);
   const bUsed = usedTeams.includes(match.b);
 
@@ -70,11 +71,11 @@ export function MatchCard({ match, usedTeams, onPick }: MatchCardProps) {
           alignItems: 'center',
         }}
       >
-        <TeamSlot code={match.a} used={aUsed} />
+        <TeamSlot code={match.a} used={aUsed} crest={crestLookup?.[match.a]} />
         <span className="display mono" style={{ fontSize: 16, color: 'var(--ink-4)' }}>
           V
         </span>
-        <TeamSlot code={match.b} used={bUsed} right />
+        <TeamSlot code={match.b} used={bUsed} crest={crestLookup?.[match.b]} right />
       </div>
     </button>
   );

@@ -2,6 +2,7 @@
 
 import { Flag } from '@/components/ui/Flag';
 import { TEAMS } from '@/lib/data/teams';
+import { isLostCode, baseTeamCode } from '@/lib/picks/pick-codes';
 import type { PoolStatus } from '@/types';
 
 interface PickTimelineProps {
@@ -24,8 +25,8 @@ export function PickTimeline({ picks }: PickTimelineProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
       {items.map((it, i) => {
-        const lost = it.pick && it.pick.endsWith('_L');
-        const code = lost ? it.pick!.replace('_L', '') : it.pick;
+        const lost = isLostCode(it.pick);
+        const code = it.pick ? baseTeamCode(it.pick) : it.pick;
         const pending = !it.pick;
 
         return (
