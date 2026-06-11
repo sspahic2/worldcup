@@ -1,12 +1,13 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Icon } from '@/components/ui/Icon';
 import { authService } from '@/lib/auth';
+import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   return (
@@ -24,6 +25,24 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(
     searchParams.get('error') === 'auth_failed' ? 'Sign-in failed. Please try again.' : null
   );
+
+  // Implicit-flow magic links (e.g. admin-generated) deliver the session in
+  // the URL fragment, which the PKCE browser client ignores — consume it here.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.includes('access_token')) return;
+    const params = new URLSearchParams(hash.slice(1));
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    if (!accessToken || !refreshToken) return;
+    const supabase = createClient();
+    supabase.auth
+      .setSession({ access_token: accessToken, refresh_token: refreshToken })
+      .then(({ error: sessionError }) => {
+        if (!sessionError) window.location.replace('/');
+        else setError(sessionError.message);
+      });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
