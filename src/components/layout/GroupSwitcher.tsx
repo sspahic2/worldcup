@@ -1,5 +1,7 @@
 'use client';
 
+import { useCompetitionData } from '@/lib/adapters/context';
+
 interface GroupSwitcherProps {
   current: string;
   onChange: (key: string) => void;
@@ -7,6 +9,8 @@ interface GroupSwitcherProps {
 }
 
 export function GroupSwitcher({ current, onChange, groupKeys }: GroupSwitcherProps) {
+  const { groupsLookup, teamLookup } = useCompetitionData();
+
   return (
     <div
       className="scroll"
@@ -27,17 +31,20 @@ export function GroupSwitcher({ current, onChange, groupKeys }: GroupSwitcherPro
     >
       {groupKeys.map((k) => {
         const active = current === k;
+        const codes = groupsLookup[k] ?? [];
         return (
           <button
             key={k}
             onClick={() => onChange(k)}
+            title={codes.map((c) => teamLookup[c] || c).join(', ')}
             style={{
-              padding: '8px 14px',
+              padding: '7px 14px',
               borderRadius: 999,
               whiteSpace: 'nowrap',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              gap: 6,
+              gap: 1,
               background: active ? 'var(--ink)' : 'var(--surface)',
               color: active ? 'var(--bg)' : 'var(--ink-2)',
               border: `1px solid ${active ? 'var(--ink)' : 'var(--border)'}`,
@@ -47,6 +54,19 @@ export function GroupSwitcher({ current, onChange, groupKeys }: GroupSwitcherPro
             <span className="display" style={{ fontSize: 14, letterSpacing: 0 }}>
               GROUP {k}
             </span>
+            {codes.length > 0 && (
+              <span
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: '0.02em',
+                  color: active ? 'var(--bg)' : 'var(--ink-4)',
+                  opacity: active ? 0.75 : 1,
+                }}
+              >
+                {codes.join(' · ')}
+              </span>
+            )}
           </button>
         );
       })}

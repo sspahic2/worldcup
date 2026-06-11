@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Flag } from '@/components/ui/Flag';
 import { Icon } from '@/components/ui/Icon';
 import { TEAMS } from '@/lib/data/teams';
+import { useCompetitionData } from '@/lib/adapters/context';
 
 interface EliminatedStateProps {
   groupKey: string;
@@ -12,13 +13,14 @@ interface EliminatedStateProps {
 }
 
 export function EliminatedState({ groupKey, team, onBack }: EliminatedStateProps) {
+  const { crestLookup } = useCompetitionData();
   const teamName = TEAMS[team] || team;
 
   return (
     <div className="flex flex-col items-center justify-center text-center min-h-[70vh] px-6 py-12 gap-6">
       {/* Grayscale flag */}
       <div style={{ filter: 'grayscale(1)', opacity: 0.6 }}>
-        <Flag code={team} size="xl" />
+        <Flag code={team} crest={crestLookup[team]} size="xl" />
       </div>
 
       {/* Eyebrow */}

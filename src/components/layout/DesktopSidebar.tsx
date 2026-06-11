@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/Icon';
+import { useCompetitionData } from '@/lib/adapters/context';
 import type { UserPool } from '@/types';
 
 interface DesktopSidebarProps {
@@ -36,6 +37,7 @@ export function DesktopSidebar({
   groupKeys,
   pool,
 }: DesktopSidebarProps) {
+  const { groupsLookup, teamLookup } = useCompetitionData();
   const dotColor =
     pool?.status === 'alive'
       ? 'var(--alive)'
@@ -149,6 +151,7 @@ export function DesktopSidebar({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {groupKeys.map((k) => {
             const active = groupKey === k;
+            const codes = groupsLookup[k] ?? [];
             return (
               <button
                 key={k}
@@ -156,10 +159,12 @@ export function DesktopSidebar({
                   onGroupChange(k);
                   onNav('dashboard');
                 }}
+                title={codes.map((c) => teamLookup[c] || c).join(', ')}
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                  gap: 2,
                   padding: '8px 12px',
                   borderRadius: 8,
                   background: active ? 'var(--surface)' : 'transparent',
@@ -172,6 +177,20 @@ export function DesktopSidebar({
                 <span className="display" style={{ fontSize: 14 }}>
                   Group {k}
                 </span>
+                {codes.length > 0 && (
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 10,
+                      letterSpacing: '0.02em',
+                      color: 'var(--ink-4)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {codes.join(' · ')}
+                  </span>
+                )}
               </button>
             );
           })}

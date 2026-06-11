@@ -11,7 +11,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Card, CardContent } from '@/components/ui/card';
 import { MatchCard } from './MatchCard';
 import { PickTimeline } from './PickTimeline';
-import { STAGE_LABELS } from '@/lib/data/teams';
+import { STAGE_LABELS, TEAMS } from '@/lib/data/teams';
 import { usedTeams } from '@/lib/picks/pick-codes';
 import type { UserPool } from '@/types';
 import type { MatchInfo, TeamInfo } from '@/lib/adapters/types';
@@ -30,6 +30,8 @@ type UpcomingMatch = {
 interface DashboardProps {
   groupKey: string;
   pool: UserPool;
+  /** The user's pending pick for the current stage, if any. */
+  stagePick?: string | null;
   groupTeams: TeamInfo[];
   groupMatches: MatchInfo[];
   /** Number of members still alive (excludes redemption) — pot splits between these. */
@@ -46,6 +48,7 @@ interface DashboardProps {
 export function Dashboard({
   groupKey,
   pool,
+  stagePick,
   groupTeams,
   groupMatches,
   aliveCount,
@@ -95,6 +98,15 @@ export function Dashboard({
       utcDate: m.utcDate,
       knockout: !pool.stage.startsWith('MD'),
     }));
+
+  // The fixture the current pick belongs to, so the indicator card can jump
+  // straight back into PickFlow (change/remove live there).
+  const pickedMatch = stagePick
+    ? upcoming.find((m) => m.a === stagePick || m.b === stagePick)
+    : undefined;
+  const stagePickName = stagePick
+    ? teamLookup[stagePick] || TEAMS[stagePick] || stagePick
+    : null;
 
   return (
     <div
@@ -235,6 +247,46 @@ export function Dashboard({
               title={`Your ${pool.stage} Pick`}
               right={upcoming[0]?.utcDate ? <Countdown kickoffUtc={upcoming[0].utcDate} /> : undefined}
             />
+            {stagePick && (
+              <Card
+                className="ring-0 rounded-[14px] bg-surface mb-2.5"
+                style={{
+                  border: '1px solid color-mix(in oklab, var(--survive-accent) 45%, var(--border))',
+                }}
+              >
+                <CardContent className="p-4">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <Flag code={stagePick} crest={crestLookup[stagePick]} size="lg" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="eyebrow">Your pick &middot; {stageLabel}</div>
+                      <div
+                        className="display"
+                        style={{
+                          fontSize: 24,
+                          lineHeight: 1.1,
+                          marginTop: 2,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {stagePickName}
+                      </div>
+                    </div>
+                    <span className="chip chip-alive">Locked in</span>
+                    {pickedMatch && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => onPick(pickedMatch)}
+                        style={{ flexShrink: 0 }}
+                      >
+                        Change
+                      </button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             {upcoming.length > 0 ? (
               <div style={{ display: 'grid', gap: 10 }}>
                 {upcoming.map((f, i) => (
@@ -277,7 +329,7 @@ export function Dashboard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
             <SectionHeader eyebrow="History" title="Your picks" />
-            <PickTimeline picks={pool.picks as Record<string, string | null | undefined>} status={pool.status} />
+            <PickTimeline picks={pool.picks as Record<string, string | null | undefined>} status={pool.status} currentStage={pool.stage} />
           </div>
           {desktop && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

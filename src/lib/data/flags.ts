@@ -72,4 +72,12 @@ export const FLAGS: Record<string, FlagDef> = {
   TUR: { colors: ['#e30a17'], dir: 's' },
   AUT: { colors: ['#ed2939', '#ffffff', '#ed2939'], dir: 'h' },
   NZL: { colors: ['#012169', '#ffffff', '#cc142b'], dir: 'h' },
+
+  // Other WC2026 qualifiers served by the live data feed but absent from the
+  // static demo groups above — kept here as the offline/no-crest fallback.
+  RSA: { colors: ['#007749', '#ffb612'], dir: 'h' },
+  ALG: { colors: ['#006233', '#ffffff'], dir: 'v' },
+  KSA: { colors: ['#006c35', '#ffffff'], dir: 'h' },
+  QAT: { colors: ['#8a1538', '#ffffff'], dir: 'v' },
+  SCO: { colors: ['#005eb8', '#ffffff'], dir: 'd' },
 };

@@ -1,16 +1,19 @@
 'use client';
 
 import { Flag } from '@/components/ui/Flag';
-import { TEAMS } from '@/lib/data/teams';
+import { STAGES, TEAMS } from '@/lib/data/teams';
 import { isLostCode, baseTeamCode } from '@/lib/picks/pick-codes';
+import { useCompetitionData } from '@/lib/adapters/context';
 import type { PoolStatus } from '@/types';
 
 interface PickTimelineProps {
   picks: Record<string, string | null | undefined>;
   status: PoolStatus;
+  currentStage?: string;
 }
 
-export function PickTimeline({ picks }: PickTimelineProps) {
+export function PickTimeline({ picks, currentStage }: PickTimelineProps) {
+  const { crestLookup } = useCompetitionData();
   const items = [
     { stage: 'MD1', pick: picks.MD1 },
     { stage: 'MD2', pick: picks.MD2 },
@@ -28,6 +31,13 @@ export function PickTimeline({ picks }: PickTimelineProps) {
         const lost = isLostCode(it.pick);
         const code = it.pick ? baseTeamCode(it.pick) : it.pick;
         const pending = !it.pick;
+        // Stage only advances once its matches resolve, so a non-lost pick at
+        // or beyond the current stage is still awaiting its result.
+        const unresolved =
+          !lost &&
+          currentStage !== undefined &&
+          STAGES.indexOf(it.stage as (typeof STAGES)[number]) >=
+            STAGES.indexOf(currentStage as (typeof STAGES)[number]);
 
         return (
           <div
@@ -60,7 +70,7 @@ export function PickTimeline({ picks }: PickTimelineProps) {
               </div>
             ) : (
               <>
-                <Flag code={code!} />
+                <Flag code={code!} crest={crestLookup[code!]} />
                 <span
                   style={{
                     fontSize: 14,
@@ -74,6 +84,10 @@ export function PickTimeline({ picks }: PickTimelineProps) {
                 </span>
                 {lost ? (
                   <span className="chip chip-out">L</span>
+                ) : unresolved ? (
+                  <span className="chip" style={{ color: 'var(--ink-3)' }}>
+                    TBD
+                  </span>
                 ) : (
                   <span className="chip chip-alive">W</span>
                 )}

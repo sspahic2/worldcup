@@ -225,6 +225,7 @@ export function AppShell({ initialPool, initialLeaderboard, initialProfile }: Ap
         <Dashboard
           groupKey={groupKey}
           pool={pool}
+          stagePick={stagePick}
           groupTeams={groupTeams}
           groupMatches={groupMatches}
           aliveCount={aliveCount}

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Flag } from '@/components/ui/Flag';
 import { Icon } from '@/components/ui/Icon';
 import { TEAMS } from '@/lib/data/teams';
+import { useCompetitionData } from '@/lib/adapters/context';
 import { cn } from '@/lib/utils';
 import type { UserPool } from '@/types';
 
@@ -22,6 +23,7 @@ const MATCH_TEAM_A = 'ENG';
 const MATCH_TEAM_B = 'BRA';
 
 export function Redemption({ groupKey, pool, onPick, onBack }: RedemptionProps) {
+  const { crestLookup } = useCompetitionData();
   const [selected, setSelected] = useState<string | null>(null);
 
   return (
@@ -78,7 +80,7 @@ export function Redemption({ groupKey, pool, onPick, onBack }: RedemptionProps) 
                   : 'border-survive-border bg-bg-2 hover:border-border-2'
               )}
             >
-              <Flag code={MATCH_TEAM_A} size="xl" />
+              <Flag code={MATCH_TEAM_A} crest={crestLookup[MATCH_TEAM_A]} size="xl" />
               <span className="display" style={{ fontSize: 18, lineHeight: 1 }}>
                 {TEAMS[MATCH_TEAM_A]}
               </span>
@@ -95,7 +97,7 @@ export function Redemption({ groupKey, pool, onPick, onBack }: RedemptionProps) 
                   : 'border-survive-border bg-bg-2 hover:border-border-2'
               )}
             >
-              <Flag code={MATCH_TEAM_B} size="xl" />
+              <Flag code={MATCH_TEAM_B} crest={crestLookup[MATCH_TEAM_B]} size="xl" />
               <span className="display" style={{ fontSize: 18, lineHeight: 1 }}>
                 {TEAMS[MATCH_TEAM_B]}
               </span>

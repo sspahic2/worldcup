@@ -6,6 +6,7 @@ import { Flag } from '@/components/ui/Flag';
 import { Icon } from '@/components/ui/Icon';
 import { Countdown } from '@/components/ui/Countdown';
 import { TEAMS } from '@/lib/data/teams';
+import { useCompetitionData } from '@/lib/adapters/context';
 import { cn } from '@/lib/utils';
 import { isLocked, LOCK_BEFORE_KICKOFF_MINUTES } from '@/lib/picks/lock-rules';
 import type { Match } from '@/types';
@@ -24,12 +25,14 @@ interface PickFlowProps {
 
 function TeamCard({
   code,
+  crest,
   selected,
   disabled,
   usedLabel,
   onSelect,
 }: {
   code: string;
+  crest?: string;
   selected: boolean;
   disabled: boolean;
   usedLabel: boolean;
@@ -51,7 +54,7 @@ function TeamCard({
       style={{ outline: 'none' }}
     >
       <div className="flex items-center gap-4">
-        <Flag code={code} size="xl" />
+        <Flag code={code} crest={crest} size="xl" />
         <div className="flex-1 min-w-0">
           <div className="display" style={{ fontSize: 28 }}>
             {TEAMS[code]}
@@ -90,6 +93,7 @@ function TeamCard({
 }
 
 export function PickFlow({ match, usedTeams, currentPick, onConfirm, onRemove, onBack, error }: PickFlowProps) {
+  const { crestLookup } = useCompetitionData();
   const [selected, setSelected] = useState<string | null>(
     () => (currentPick && (currentPick === match.a || currentPick === match.b) ? currentPick : null),
   );
@@ -184,6 +188,7 @@ export function PickFlow({ match, usedTeams, currentPick, onConfirm, onRemove, o
       <div className="flex flex-col gap-3">
         <TeamCard
           code={match.a}
+          crest={crestLookup[match.a]}
           selected={selected === match.a}
           disabled={aUsed}
           usedLabel={aUsed}
@@ -191,6 +196,7 @@ export function PickFlow({ match, usedTeams, currentPick, onConfirm, onRemove, o
         />
         <TeamCard
           code={match.b}
+          crest={crestLookup[match.b]}
           selected={selected === match.b}
           disabled={bUsed}
           usedLabel={bUsed}

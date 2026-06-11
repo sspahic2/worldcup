@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Flag } from '@/components/ui/Flag';
 import { Icon } from '@/components/ui/Icon';
 import { TEAMS } from '@/lib/data/teams';
+import { useCompetitionData } from '@/lib/adapters/context';
 import type { Match } from '@/types';
 
 interface PickConfirmationProps {
@@ -24,6 +25,8 @@ function kickoffText(utcDate?: string): string {
 }
 
 export function PickConfirmation({ team, match, onDone }: PickConfirmationProps) {
+  const { crestLookup } = useCompetitionData();
+
   return (
     <div
       className="flex flex-col items-center justify-center gap-6 p-4 max-w-[480px] mx-auto w-full"
@@ -72,7 +75,7 @@ export function PickConfirmation({ team, match, onDone }: PickConfirmationProps)
           opacity: 0,
         }}
       >
-        <Flag code={team} size="xl" />
+        <Flag code={team} crest={crestLookup[team]} size="xl" />
       </div>
 
       {/* Info text */}
