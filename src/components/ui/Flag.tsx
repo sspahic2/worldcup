@@ -1,16 +1,40 @@
 'use client';
 
+import Image from 'next/image';
 import { FLAGS } from '@/lib/data/flags';
 import { TEAMS } from '@/lib/data/teams';
 
 interface FlagProps {
   code: string;
+  /** Crest image URL (e.g. from football-data). Rendered instead of the CSS flag when set. */
+  crest?: string;
   size?: 'sm' | 'lg' | 'xl';
 }
 
-export function Flag({ code, size = 'sm' }: FlagProps) {
+const SIZES: Record<'sm' | 'lg' | 'xl', { w: number; h: number }> = {
+  sm: { w: 20, h: 14 },
+  lg: { w: 32, h: 22 },
+  xl: { w: 56, h: 40 },
+};
+
+export function Flag({ code, crest, size = 'sm' }: FlagProps) {
   const f = FLAGS[code];
   const cls = size === 'lg' ? 'flag flag-lg' : size === 'xl' ? 'flag flag-xl' : 'flag';
+
+  if (crest) {
+    const { w, h } = SIZES[size];
+    return (
+      <Image
+        src={crest}
+        alt={TEAMS[code] || code}
+        title={TEAMS[code] || code}
+        width={w}
+        height={h}
+        className={cls}
+        style={{ objectFit: 'contain', boxShadow: 'none' }}
+      />
+    );
+  }
 
   if (!f) return <span className={cls} style={{ background: '#555' }} title={code} />;
 

@@ -435,14 +435,20 @@ class SupabasePickRepository implements PickRepository {
   async update(id: string, input: PickUpdate): Promise<PlayerPick> {
     const patch: Record<string, unknown> = {};
     if (input.result !== undefined) patch.result = input.result;
+    if (input.teamCode !== undefined) patch.team_code = input.teamCode;
+    if (input.fdMatchId !== undefined) patch.fd_match_id = input.fdMatchId;
 
+    // maybeSingle: RLS (ownership, pending-only, time lock) or a concurrent
+    // resolution can leave zero rows updated — surface that as a friendly
+    // error instead of a raw PGRST116.
     const { data, error } = await this.supabase
       .from('picks')
       .update(patch)
       .eq('id', id)
       .select('*')
-      .single();
+      .maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error('Pick can no longer be changed');
     return toPick(data as PickRow);
   }
 

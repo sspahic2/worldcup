@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import { notifyPickResults, type ResolvedPickNotification } from '@/lib/email/notify';
 
 export interface ResolveResult {
   picksResolved: number;
@@ -41,6 +42,7 @@ export async function resolvePicks(): Promise<ResolveResult> {
 
   let picksResolved = 0;
   let membersEliminated = 0;
+  const notifications: ResolvedPickNotification[] = [];
 
   for (const m of finished) {
     if (!m.winner) continue;
@@ -67,6 +69,12 @@ export async function resolvePicks(): Promise<ResolveResult> {
         .eq('id', p.id);
       if (updPickErr) throw updPickErr;
       picksResolved++;
+      notifications.push({
+        poolMemberId: p.pool_member_id,
+        stage: p.stage,
+        teamCode: p.team_code,
+        won,
+      });
 
       if (!won) {
         const { error: updMemberErr, count } = await supabase
@@ -79,6 +87,10 @@ export async function resolvePicks(): Promise<ResolveResult> {
       }
     }
   }
+
+  // Survived/eliminated emails. Deduped per (member, stage) inside, so cron
+  // re-runs are safe; failures are logged and never fail the resolution.
+  await notifyPickResults(notifications);
 
   return { picksResolved, membersEliminated };
 }

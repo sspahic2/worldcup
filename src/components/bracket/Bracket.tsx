@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Flag } from '@/components/ui/Flag';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useCompetitionData } from '@/lib/adapters/context';
+import { isLostCode, baseTeamCode } from '@/lib/picks/pick-codes';
 import { cn } from '@/lib/utils';
 import type { UserPool } from '@/types';
 import type { MatchInfo, TeamInfo } from '@/lib/adapters/types';
@@ -287,8 +288,8 @@ export function Bracket({ groupKey, pool, desktop }: BracketProps) {
           <div className="eyebrow mb-3">Your picks so far</div>
           <div className="flex flex-wrap gap-2">
             {pickEntries.map(([stage, pick]) => {
-              const lost = pick.endsWith('_L');
-              const code = lost ? pick.replace('_L', '') : pick;
+              const lost = isLostCode(pick);
+              const code = baseTeamCode(pick);
               const name = teamLookup[code] || code;
               return (
                 <div

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Flag } from '@/components/ui/Flag';
 import { StatusChip } from '@/components/ui/StatusChip';
 import { StageBar } from '@/components/ui/StageBar';
@@ -7,15 +8,35 @@ import { PotCounter } from '@/components/ui/PotCounter';
 import { Countdown } from '@/components/ui/Countdown';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Icon } from '@/components/ui/Icon';
+import { Card, CardContent } from '@/components/ui/card';
 import { MatchCard } from './MatchCard';
 import { PickTimeline } from './PickTimeline';
-import { TEAMS, GROUPS, groupFixtures, STAGE_LABELS } from '@/lib/data/teams';
-import type { UserPool, GroupKey } from '@/types';
+import { STAGE_LABELS } from '@/lib/data/teams';
+import { usedTeams } from '@/lib/picks/pick-codes';
+import type { UserPool } from '@/types';
+import type { MatchInfo, TeamInfo } from '@/lib/adapters/types';
+
+type UpcomingMatch = {
+  id?: number;
+  md: number | string;
+  a: string;
+  b: string;
+  venue: string;
+  date: string;
+  utcDate?: string;
+  knockout?: boolean;
+};
 
 interface DashboardProps {
   groupKey: string;
   pool: UserPool;
-  onPick: (match: { md: number | string; a: string; b: string; venue: string; date: string; knockout?: boolean }) => void;
+  groupTeams: TeamInfo[];
+  groupMatches: MatchInfo[];
+  /** Number of members still alive (excludes redemption) — pot splits between these. */
+  aliveCount: number;
+  crestLookup: Record<string, string>;
+  teamLookup: Record<string, string>;
+  onPick: (match: UpcomingMatch) => void;
   onOpenBracket: () => void;
   onOpenLeaderboard: () => void;
   onOpenRedemption: () => void;
@@ -25,30 +46,55 @@ interface DashboardProps {
 export function Dashboard({
   groupKey,
   pool,
+  groupTeams,
+  groupMatches,
+  aliveCount,
+  crestLookup,
+  teamLookup,
   onPick,
   onOpenBracket,
   onOpenLeaderboard,
   onOpenRedemption,
   desktop,
 }: DashboardProps) {
-  const fixtures = groupFixtures(groupKey as GroupKey);
   const stageLabel = STAGE_LABELS[pool.stage] || pool.stage;
-  const usedTeams = Object.entries(pool.picks || {})
-    .filter(([, v]) => v && !v.endsWith('_L'))
-    .map(([, v]) => v!);
+  // Teams burned in *previous* stages. The current stage's own pick is
+  // excluded so the user can still change it (or keep it) before lock.
+  const burnedTeams = usedTeams(pool.picks, pool.stage);
 
-  const upcoming = pool.stage.startsWith('MD')
-    ? fixtures.filter((f) => `MD${f.md}` === pool.stage)
-    : [
-        {
-          md: pool.stage,
-          a: GROUPS[groupKey as GroupKey][0],
-          b: GROUPS[groupKey as GroupKey][2],
-          venue: 'New York',
-          date: 'Jul 04',
-          knockout: true,
-        },
-      ];
+  // Pot splits between alive members only (redemption members have no share) —
+  // same rule as the leaderboard and profile pot shares.
+  // TODO: swap to the shared `potShare` helper from '@/lib/pool-data' once it
+  // is exported and consumable from a client component (pool-data currently
+  // pulls in the server-only Supabase client).
+  const splitCount = aliveCount > 0 ? aliveCount : pool.survivors;
+  const aliveShare = splitCount > 0 ? Math.round(pool.pot / splitCount) : 0;
+
+  // Real, still-pickable fixtures for the current stage: not started yet and
+  // sorted by kickoff so the countdown targets the next match. Picks are
+  // never offered without a real match id. The "now" snapshot is taken once
+  // on mount; PickFlow and the server re-check lock state in real time.
+  const [nowMs] = useState(() => Date.now());
+  const upcoming: UpcomingMatch[] = groupMatches
+    .filter(
+      (m) =>
+        m.stage === pool.stage &&
+        m.homeTeam &&
+        m.awayTeam &&
+        (m.status === 'SCHEDULED' || m.status === 'TIMED') &&
+        new Date(m.utcDate).getTime() > nowMs,
+    )
+    .sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime())
+    .map((m) => ({
+      id: typeof m.id === 'number' ? m.id : undefined,
+      md: m.matchday ?? pool.stage,
+      a: m.homeTeam!.code,
+      b: m.awayTeam!.code,
+      venue: m.venue || 'TBD',
+      date: m.displayDate,
+      utcDate: m.utcDate,
+      knockout: !pool.stage.startsWith('MD'),
+    }));
 
   return (
     <div
@@ -77,11 +123,11 @@ export function Dashboard({
               GROUP&nbsp;{groupKey}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-              {GROUPS[groupKey as GroupKey].map((c) => (
-                <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <Flag code={c} size={desktop ? 'lg' : 'sm'} />
+              {groupTeams.map((t) => (
+                <span key={t.code} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Flag code={t.code} crest={t.crest || crestLookup[t.code]} size={desktop ? 'lg' : 'sm'} />
                   <span style={{ fontSize: desktop ? 13 : 11, fontWeight: 600, letterSpacing: '0.02em' }}>
-                    {TEAMS[c]}
+                    {teamLookup[t.code] || t.name}
                   </span>
                 </span>
               ))}
@@ -108,9 +154,9 @@ export function Dashboard({
             </div>
             <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 12 }}>
               <span className="mono">{pool.players}</span> players &middot;{' '}
-              <span className="mono">${pool.buyIn}</span> buy-in &middot; Split {pool.survivors} ways ={' '}
+              <span className="mono">${pool.buyIn}</span> buy-in &middot; Split {splitCount} ways ={' '}
               <span className="mono" style={{ color: 'var(--ink)', fontWeight: 600 }}>
-                ${Math.round(pool.pot / pool.survivors).toLocaleString()}
+                ${aliveShare.toLocaleString()}
               </span>
             </div>
           </div>
@@ -187,13 +233,33 @@ export function Dashboard({
             <SectionHeader
               eyebrow="Next"
               title={`Your ${pool.stage} Pick`}
-              right={<Countdown hours={2} mins={47} />}
+              right={upcoming[0]?.utcDate ? <Countdown kickoffUtc={upcoming[0].utcDate} /> : undefined}
             />
-            <div style={{ display: 'grid', gap: 10 }}>
-              {upcoming.map((f, i) => (
-                <MatchCard key={i} match={f} usedTeams={usedTeams} onPick={() => onPick(f)} />
-              ))}
-            </div>
+            {upcoming.length > 0 ? (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {upcoming.map((f, i) => (
+                  <MatchCard
+                    key={f.id ?? i}
+                    match={f}
+                    usedTeams={burnedTeams}
+                    crestLookup={crestLookup}
+                    onPick={() => onPick(f)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <Card className="ring-0 border-survive-border bg-surface rounded-[14px]">
+                <CardContent className="p-6 text-center">
+                  <div className="display" style={{ fontSize: 22 }}>
+                    Fixtures TBD
+                  </div>
+                  <p className="text-[13px] text-ink-3 mt-2 mb-0">
+                    No upcoming {stageLabel} matches for Group {groupKey} yet. Picks open once
+                    fixtures are confirmed.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {!desktop && (

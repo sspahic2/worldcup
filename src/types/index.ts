@@ -24,6 +24,28 @@ export interface UserPool {
   buyIn: number;
   eliminatedAt?: string;
   hero?: boolean;
+  poolId?: string;
+  memberId?: string;
+}
+
+export interface LeaderboardEntry {
+  memberId: string;
+  username: string;
+  stage: string;
+  streak: number;
+  potShare: number;
+  status: PoolStatus;
+  isYou: boolean;
+}
+
+export interface ProfileData {
+  displayName: string;
+  username: string | null;
+  status: PoolStatus | null;
+  picksMade: number;
+  wins: number;
+  currentStage: string;
+  potShare: number;
 }
 
 export interface Match {
@@ -32,6 +54,7 @@ export interface Match {
   b: string;
   venue: string;
   date: string;
+  utcDate?: string;
   knockout?: boolean;
 }
 

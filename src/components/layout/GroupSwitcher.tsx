@@ -1,16 +1,12 @@
 'use client';
 
-import type { UserPool } from '@/types';
-
 interface GroupSwitcherProps {
   current: string;
   onChange: (key: string) => void;
-  pools: Record<string, UserPool | null>;
+  groupKeys: string[];
 }
 
-export function GroupSwitcher({ current, onChange, pools }: GroupSwitcherProps) {
-  const joined = Object.entries(pools).filter(([, v]) => v) as [string, UserPool][];
-
+export function GroupSwitcher({ current, onChange, groupKeys }: GroupSwitcherProps) {
   return (
     <div
       className="scroll"
@@ -29,14 +25,8 @@ export function GroupSwitcher({ current, onChange, pools }: GroupSwitcherProps) 
         maxWidth: '100%',
       }}
     >
-      {joined.map(([k, v]) => {
+      {groupKeys.map((k) => {
         const active = current === k;
-        const dotColor =
-          v.status === 'alive'
-            ? 'var(--alive)'
-            : v.status === 'redemption'
-            ? 'var(--redemption)'
-            : 'var(--eliminated)';
         return (
           <button
             key={k}
@@ -54,7 +44,6 @@ export function GroupSwitcher({ current, onChange, pools }: GroupSwitcherProps) 
               flexShrink: 0,
             }}
           >
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: dotColor }} />
             <span className="display" style={{ fontSize: 14, letterSpacing: 0 }}>
               GROUP {k}
             </span>
