@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCompetitionData } from '@/lib/adapters/context';
 import { useAuth } from '@/lib/permissions/context';
 import { submitPick, deletePick } from '@/app/actions/picks';
@@ -51,6 +51,10 @@ const VIEW_RESOURCE_MAP: Record<string, Resource> = {
   winner: 'dashboard',
 };
 
+// Flow-internal views that depend on in-memory state (selected match, last
+// pick) — never restored from the URL.
+const TRANSIENT_VIEWS = new Set(['pick', 'confirmation', 'eliminated', 'winner', 'access-denied']);
+
 interface AppShellProps {
   initialPool?: UserPool | null;
   initialLeaderboard?: LeaderboardEntry[];
@@ -65,9 +69,18 @@ export function AppShell({ initialPool, initialLeaderboard, initialProfile }: Ap
 
   const groupKeys = competitionData.groups.map((g) => g.key);
 
+  const searchParams = useSearchParams();
+  const defaultGroup = groupKeys[0] || 'A';
+
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [view, setView] = useState(() => 'landing');
-  const [groupKey, setGroupKey] = useState(groupKeys[0] || 'A');
+  const [view, setView] = useState(() => {
+    const v = searchParams.get('view');
+    return v && VIEW_RESOURCE_MAP[v] && !TRANSIENT_VIEWS.has(v) ? v : 'landing';
+  });
+  const [groupKey, setGroupKey] = useState(() => {
+    const g = searchParams.get('group');
+    return g && (groupKeys.length === 0 || groupKeys.includes(g)) ? g : defaultGroup;
+  });
   const [pickMatch, setPickMatch] = useState<MatchData | null>(null);
   const [lastPick, setLastPick] = useState<{ team: string; match: MatchData } | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
@@ -80,6 +93,35 @@ export function AppShell({ initialPool, initialLeaderboard, initialProfile }: Ap
       setView('dashboard');
     }
   }, [loading, isAuthenticated, view]);
+
+  // Keep view/group in the URL (shallow — no server round-trip) so refresh,
+  // share, and back/forward all work. Transient flow views map to dashboard.
+  useEffect(() => {
+    const urlView = TRANSIENT_VIEWS.has(view) ? 'dashboard' : view;
+    const next = new URLSearchParams(window.location.search);
+    if (urlView === 'landing') next.delete('view');
+    else next.set('view', urlView);
+    if (groupKey === defaultGroup) next.delete('group');
+    else next.set('group', groupKey);
+    const qs = next.toString();
+    const target = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    if (target !== window.location.pathname + window.location.search) {
+      window.history.pushState(null, '', target);
+    }
+  }, [view, groupKey, defaultGroup]);
+
+  // Back/forward restores state from the URL.
+  useEffect(() => {
+    const onPop = () => {
+      const p = new URLSearchParams(window.location.search);
+      const v = p.get('view');
+      setView(v && VIEW_RESOURCE_MAP[v] && !TRANSIENT_VIEWS.has(v) ? v : isAuthenticated ? 'dashboard' : 'landing');
+      const g = p.get('group');
+      setGroupKey(g && (groupKeys.length === 0 || groupKeys.includes(g)) ? g : defaultGroup);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [groupKeys, defaultGroup, isAuthenticated]);
 
   useEffect(() => {
     const check = () => setIsDesktop(window.innerWidth >= 1024);

@@ -1,18 +1,20 @@
 import type { GroupKey } from '@/types';
 
+// The 48 qualified teams, keyed by football-data.org TLA. Offline fallback
+// for the live teamLookup \u2014 keep codes in sync with the feed.
 export const TEAMS: Record<string, string> = {
-  MEX: 'Mexico', CRC: 'Costa Rica', JAM: 'Jamaica', UZB: 'Uzbekistan',
-  CAN: 'Canada', ECU: 'Ecuador', MAR: 'Morocco', POR: 'Portugal',
-  CRO: 'Croatia', NED: 'Netherlands', SEN: 'Senegal', SVN: 'Slovenia',
-  USA: 'United States', SUI: 'Switzerland', KOR: 'South Korea', PAR: 'Paraguay',
-  ARG: 'Argentina', NOR: 'Norway', AUS: 'Australia', TUN: 'Tunisia',
-  ENG: 'England', GER: 'Germany', CPV: 'Cape Verde', JOR: 'Jordan',
-  ESP: 'Spain', BEL: 'Belgium', EGY: 'Egypt', HAI: 'Haiti',
-  BRA: 'Brazil', IRN: 'Iran', COL: 'Colombia', UAE: 'UAE',
-  FRA: 'France', URU: 'Uruguay', JPN: 'Japan', PAN: 'Panama',
-  ITA: 'Italy', SRB: 'Serbia', CIV: 'C\u00f4te d\u2019Ivoire', CUR: 'Cura\u00e7ao',
-  POL: 'Poland', UKR: 'Ukraine', DEN: 'Denmark', NGA: 'Nigeria',
-  GHA: 'Ghana', TUR: 'T\u00fcrkiye', AUT: 'Austria', NZL: 'New Zealand',
+  ALG: 'Algeria', ARG: 'Argentina', AUS: 'Australia', AUT: 'Austria',
+  BEL: 'Belgium', BIH: 'Bosnia-Herzegovina', BRA: 'Brazil', CAN: 'Canada',
+  CIV: 'Ivory Coast', COD: 'Congo DR', COL: 'Colombia', CPV: 'Cape Verde Islands',
+  CRO: 'Croatia', CUW: 'Cura\u00e7ao', CZE: 'Czechia', ECU: 'Ecuador',
+  EGY: 'Egypt', ENG: 'England', ESP: 'Spain', FRA: 'France',
+  GER: 'Germany', GHA: 'Ghana', HAI: 'Haiti', IRN: 'Iran',
+  IRQ: 'Iraq', JOR: 'Jordan', JPN: 'Japan', KOR: 'South Korea',
+  KSA: 'Saudi Arabia', MAR: 'Morocco', MEX: 'Mexico', NED: 'Netherlands',
+  NOR: 'Norway', NZL: 'New Zealand', PAN: 'Panama', PAR: 'Paraguay',
+  POR: 'Portugal', QAT: 'Qatar', RSA: 'South Africa', SCO: 'Scotland',
+  SEN: 'Senegal', SUI: 'Switzerland', SWE: 'Sweden', TUN: 'Tunisia',
+  TUR: 'Turkey', URY: 'Uruguay', USA: 'United States', UZB: 'Uzbekistan',
 };
 
 export const GROUPS: Record<GroupKey, string[]> = {

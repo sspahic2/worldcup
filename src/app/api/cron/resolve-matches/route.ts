@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { syncMatchCache, resolvePicks } from '@/lib/match-resolution';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,10 +17,24 @@ async function run(request: NextRequest) {
   try {
     const sync = await syncMatchCache();
     const resolution = await resolvePicks();
+
+    // Backfill catch-up picks for members who joined while a match was in
+    // play (their join-time trigger saw no finished matches yet). Non-fatal.
+    let catchupPicksAssigned = 0;
+    const { data: backfilled, error: backfillError } = await createAdminClient().rpc(
+      'backfill_catchup_picks',
+    );
+    if (backfillError) {
+      console.error('[cron/resolve-matches] catch-up backfill failed:', backfillError);
+    } else {
+      catchupPicksAssigned = backfilled ?? 0;
+    }
+
     return NextResponse.json({
       ok: true,
       sync,
       resolution,
+      catchupPicksAssigned,
       ranAt: new Date().toISOString(),
     });
   } catch (e) {

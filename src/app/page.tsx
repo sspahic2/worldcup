@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { CompetitionDataProvider } from '@/lib/adapters/context';
@@ -55,11 +56,13 @@ export default async function Home({
   return (
     <CompetitionDataProvider data={competitionData}>
       <AuthProvider user={authUser}>
-        <AppShell
-          initialPool={pool}
-          initialLeaderboard={leaderboard}
-          initialProfile={profile}
-        />
+        <Suspense>
+          <AppShell
+            initialPool={pool}
+            initialLeaderboard={leaderboard}
+            initialProfile={profile}
+          />
+        </Suspense>
       </AuthProvider>
     </CompetitionDataProvider>
   );
