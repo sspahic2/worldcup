@@ -10,6 +10,8 @@ import type {
   Stage,
   PoolStatus,
   PickResult,
+  KnockoutLife,
+  KnockoutData,
   LeaderboardEntry,
   ProfileData,
 } from '@/types';
@@ -289,6 +291,97 @@ export const getUserTracks = cache(async (): Promise<Record<string, GroupTrack>>
     };
   }
   return tracks;
+});
+
+// ── Knockout phase ───────────────────────────────────────────────
+
+type KnockoutMatchRow = {
+  group_key: string | null;
+  stage: string;
+  status: string;
+  home_team_tla: string | null;
+  away_team_tla: string | null;
+};
+
+type KnockoutLifeRow = {
+  id: string;
+  source_group_key: string | null;
+  status: PoolStatus;
+  is_bonus: boolean;
+  knockout_picks: { stage: string; team_code: string; result: PickResult }[] | null;
+};
+
+/**
+ * The signed-in player's knockout state: their lives (one per survived group +
+ * any bonus life) with per-round picks, the qualifiers per group (R32 options),
+ * the current knockout stage, and whether knockouts are open yet.
+ */
+export const getKnockoutData = cache(async (): Promise<KnockoutData> => {
+  const empty: KnockoutData = { lives: [], stage: 'R32', qualifiersByGroup: {}, knockoutsOpen: false };
+  const ctx = await getAuthedContext();
+  if (!ctx) return empty;
+
+  const [membership, stage, mcRes] = await Promise.all([
+    getMemberWithPicks(),
+    getKnockoutStage(),
+    ctx.supabase
+      .from('match_cache')
+      .select('group_key, stage, status, home_team_tla, away_team_tla'),
+  ]);
+
+  // Qualifiers = a group's teams that also appear in the R32 fixtures. Also
+  // track whether the whole group stage has finished (knockouts open).
+  const rows = (mcRes.data ?? []) as KnockoutMatchRow[];
+  const groupTeams: Record<string, Set<string>> = {};
+  const r32Teams = new Set<string>();
+  let groupMatches = 0;
+  let groupFinished = 0;
+  for (const r of rows) {
+    if (r.group_key && GROUP_STAGES.includes(r.stage as Stage)) {
+      groupMatches++;
+      if (r.status === 'FINISHED') groupFinished++;
+      (groupTeams[r.group_key] ??= new Set());
+      if (r.home_team_tla) groupTeams[r.group_key].add(r.home_team_tla);
+      if (r.away_team_tla) groupTeams[r.group_key].add(r.away_team_tla);
+    }
+    if (r.stage === 'R32') {
+      if (r.home_team_tla) r32Teams.add(r.home_team_tla);
+      if (r.away_team_tla) r32Teams.add(r.away_team_tla);
+    }
+  }
+  const qualifiersByGroup: Record<string, string[]> = {};
+  for (const g of GROUP_KEYS) {
+    qualifiersByGroup[g] = [...(groupTeams[g] ?? [])].filter((t) => r32Teams.has(t));
+  }
+  const knockoutsOpen = groupMatches > 0 && groupFinished === groupMatches;
+
+  let lives: KnockoutLife[] = [];
+  if (membership) {
+    const { data, error } = await ctx.supabase
+      .from('knockout_lives')
+      .select('id, source_group_key, status, is_bonus, knockout_picks(stage, team_code, result)')
+      .eq('pool_member_id', membership.member.id);
+    if (error) console.error('getKnockoutData lives query failed:', error);
+    lives = ((data ?? []) as unknown as KnockoutLifeRow[]).map((l) => {
+      const { picks, pickResults } = mapPicks(
+        (l.knockout_picks ?? []).map((p) => ({
+          stage: p.stage,
+          teamCode: p.team_code,
+          result: p.result,
+        })),
+      );
+      return {
+        id: l.id,
+        sourceGroup: l.source_group_key,
+        status: l.status,
+        isBonus: l.is_bonus,
+        picks,
+        pickResults,
+      };
+    });
+  }
+
+  return { lives, stage, qualifiersByGroup, knockoutsOpen };
 });
 
 // ── Global (knockout) pool ───────────────────────────────────────

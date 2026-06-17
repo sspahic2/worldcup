@@ -67,6 +67,32 @@ export interface TrackSummary {
   stage: Stage | null;
 }
 
+/**
+ * A knockout "life" — one per group the player survived. Each round the player
+ * picks one team per alive life. The life dies when its pick loses.
+ */
+export interface KnockoutLife {
+  id: string;
+  /** Group this life came from (null for a 3rd-place bonus life). */
+  sourceGroup: string | null;
+  status: PoolStatus;
+  isBonus: boolean;
+  /** Team code per knockout stage; lost picks carry the `_L` suffix. */
+  picks: Partial<Record<Stage, string>>;
+  pickResults: Partial<Record<Stage, PickResult>>;
+}
+
+export interface KnockoutData {
+  /** The player's lives (one per survived group + any bonus life). */
+  lives: KnockoutLife[];
+  /** Current knockout stage (first R32..F with an unfinished match). */
+  stage: Stage;
+  /** Teams that advanced, per group ('A'..'L') — the R32 pick options. */
+  qualifiersByGroup: Record<string, string[]>;
+  /** True once the group stage is fully finished and knockouts are live. */
+  knockoutsOpen: boolean;
+}
+
 export interface LeaderboardEntry {
   memberId: string;
   username: string;

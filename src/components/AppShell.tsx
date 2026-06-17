@@ -15,6 +15,7 @@ import { Dashboard } from '@/components/dashboard/Dashboard';
 import { PickFlow } from '@/components/pick/PickFlow';
 import { PickConfirmation } from '@/components/pick/PickConfirmation';
 import { Bracket } from '@/components/bracket/Bracket';
+import { KnockoutBoard } from '@/components/knockout/KnockoutBoard';
 import { Leaderboard } from '@/components/leaderboard/Leaderboard';
 import { Profile } from '@/components/profile/Profile';
 import { Landing } from '@/components/landing/Landing';
@@ -24,7 +25,7 @@ import { WinnerState } from '@/components/states/WinnerState';
 import { EmptyState } from '@/components/states/EmptyState';
 import { Redemption } from '@/components/pick/Redemption';
 import { AccessDenied } from '@/components/states/AccessDenied';
-import type { UserPool, GroupTrack, LeaderboardEntry, ProfileData } from '@/types';
+import type { UserPool, GroupTrack, KnockoutData, LeaderboardEntry, ProfileData } from '@/types';
 import type { GamePot } from '@/lib/pool-data';
 
 type MatchData = {
@@ -44,6 +45,7 @@ const VIEW_RESOURCE_MAP: Record<string, Resource> = {
   pick: 'pick',
   confirmation: 'pick',
   bracket: 'bracket',
+  knockout: 'bracket',
   leaderboard: 'leaderboard',
   redemption: 'redemption',
   profile: 'profile',
@@ -62,6 +64,8 @@ interface AppShellProps {
   initialTracks?: Record<string, GroupTrack>;
   /** The single game-wide pot (one buy-in per player). */
   initialGamePot?: GamePot;
+  /** The player's knockout lives + per-round state. */
+  initialKnockout?: KnockoutData;
   initialLeaderboard?: LeaderboardEntry[];
   /** Per-group leaderboards, keyed by group key. */
   initialGroupLeaderboards?: Record<string, LeaderboardEntry[]>;
@@ -72,6 +76,7 @@ export function AppShell({
   initialPool,
   initialTracks,
   initialGamePot,
+  initialKnockout,
   initialLeaderboard,
   initialGroupLeaderboards,
   initialProfile,
@@ -344,6 +349,9 @@ export function AppShell({
 
     if (view === 'bracket' && activePool)
       return <Bracket groupKey={groupKey} pool={activePool} desktop={isDesktop} />;
+
+    if (view === 'knockout' && initialKnockout)
+      return <KnockoutBoard knockout={initialKnockout} desktop={isDesktop} />;
 
     if (view === 'redemption' && pool)
       return (
