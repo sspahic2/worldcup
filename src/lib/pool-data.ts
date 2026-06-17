@@ -10,6 +10,8 @@ import type {
   Stage,
   PoolStatus,
   PickResult,
+  KnockoutLife,
+  KnockoutData,
   LeaderboardEntry,
   ProfileData,
 } from '@/types';
@@ -87,6 +89,48 @@ const getGlobalPoolSummary = cache(async (): Promise<PoolSummary | null> => {
   const ctx = await getAuthedContext();
   if (!ctx) return null;
   return ctx.repos.pools.getSummary(GLOBAL_POOL_ID);
+});
+
+export interface GamePot {
+  /** Single pot: one buy-in per player (carried on the global pool). */
+  pot: number;
+  /** Total players in the game. */
+  players: number;
+  /** Players still in the game (≥1 group track alive or in redemption). */
+  survivors: number;
+  /** Current per-survivor share; all-out → split equally among all players. */
+  share: number;
+}
+
+/**
+ * The one game-wide pot. The whole game is a single buy-in per player (carried
+ * on the global pool) into one pot, paid to the players still standing. A
+ * player survives while at least one of their group tracks is alive/redemption;
+ * once everyone is out the pot splits equally among all players.
+ */
+export const getGamePot = cache(async (): Promise<GamePot> => {
+  const ctx = await getAuthedContext();
+  if (!ctx) return { pot: 0, players: 0, survivors: 0, share: 0 };
+
+  const [summary, survivorsRes] = await Promise.all([
+    getGlobalPoolSummary(),
+    ctx.supabase
+      .from('pool_members')
+      .select('user_id, pools!inner(group_key)')
+      .not('pools.group_key', 'is', null)
+      .in('status', ['alive', 'redemption']),
+  ]);
+
+  const pot = summary?.pot ?? 0;
+  const players = summary?.totalPlayers ?? 0;
+  const survivors = new Set(
+    (survivorsRes.data ?? []).map((r) => (r as { user_id: string }).user_id),
+  ).size;
+  const share =
+    survivors > 0 ? Math.round(pot / survivors)
+    : players > 0 ? Math.round(pot / players)
+    : 0;
+  return { pot, players, survivors, share };
 });
 
 /** The logged-in user's global-pool membership and picks, fetched once per request. */
@@ -249,6 +293,97 @@ export const getUserTracks = cache(async (): Promise<Record<string, GroupTrack>>
   return tracks;
 });
 
+// ── Knockout phase ───────────────────────────────────────────────
+
+type KnockoutMatchRow = {
+  group_key: string | null;
+  stage: string;
+  status: string;
+  home_team_tla: string | null;
+  away_team_tla: string | null;
+};
+
+type KnockoutLifeRow = {
+  id: string;
+  source_group_key: string | null;
+  status: PoolStatus;
+  is_bonus: boolean;
+  knockout_picks: { stage: string; team_code: string; result: PickResult }[] | null;
+};
+
+/**
+ * The signed-in player's knockout state: their lives (one per survived group +
+ * any bonus life) with per-round picks, the qualifiers per group (R32 options),
+ * the current knockout stage, and whether knockouts are open yet.
+ */
+export const getKnockoutData = cache(async (): Promise<KnockoutData> => {
+  const empty: KnockoutData = { lives: [], stage: 'R32', qualifiersByGroup: {}, knockoutsOpen: false };
+  const ctx = await getAuthedContext();
+  if (!ctx) return empty;
+
+  const [membership, stage, mcRes] = await Promise.all([
+    getMemberWithPicks(),
+    getKnockoutStage(),
+    ctx.supabase
+      .from('match_cache')
+      .select('group_key, stage, status, home_team_tla, away_team_tla'),
+  ]);
+
+  // Qualifiers = a group's teams that also appear in the R32 fixtures. Also
+  // track whether the whole group stage has finished (knockouts open).
+  const rows = (mcRes.data ?? []) as KnockoutMatchRow[];
+  const groupTeams: Record<string, Set<string>> = {};
+  const r32Teams = new Set<string>();
+  let groupMatches = 0;
+  let groupFinished = 0;
+  for (const r of rows) {
+    if (r.group_key && GROUP_STAGES.includes(r.stage as Stage)) {
+      groupMatches++;
+      if (r.status === 'FINISHED') groupFinished++;
+      (groupTeams[r.group_key] ??= new Set());
+      if (r.home_team_tla) groupTeams[r.group_key].add(r.home_team_tla);
+      if (r.away_team_tla) groupTeams[r.group_key].add(r.away_team_tla);
+    }
+    if (r.stage === 'R32') {
+      if (r.home_team_tla) r32Teams.add(r.home_team_tla);
+      if (r.away_team_tla) r32Teams.add(r.away_team_tla);
+    }
+  }
+  const qualifiersByGroup: Record<string, string[]> = {};
+  for (const g of GROUP_KEYS) {
+    qualifiersByGroup[g] = [...(groupTeams[g] ?? [])].filter((t) => r32Teams.has(t));
+  }
+  const knockoutsOpen = groupMatches > 0 && groupFinished === groupMatches;
+
+  let lives: KnockoutLife[] = [];
+  if (membership) {
+    const { data, error } = await ctx.supabase
+      .from('knockout_lives')
+      .select('id, source_group_key, status, is_bonus, knockout_picks(stage, team_code, result)')
+      .eq('pool_member_id', membership.member.id);
+    if (error) console.error('getKnockoutData lives query failed:', error);
+    lives = ((data ?? []) as unknown as KnockoutLifeRow[]).map((l) => {
+      const { picks, pickResults } = mapPicks(
+        (l.knockout_picks ?? []).map((p) => ({
+          stage: p.stage,
+          teamCode: p.team_code,
+          result: p.result,
+        })),
+      );
+      return {
+        id: l.id,
+        sourceGroup: l.source_group_key,
+        status: l.status,
+        isBonus: l.is_bonus,
+        picks,
+        pickResults,
+      };
+    });
+  }
+
+  return { lives, stage, qualifiersByGroup, knockoutsOpen };
+});
+
 // ── Global (knockout) pool ───────────────────────────────────────
 
 /**
@@ -367,43 +502,45 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
 /**
  * Group-stage leaderboards for all 12 group pools, keyed by group key —
  * ONE query across every group-pool membership, grouped client-side.
- * Pot share per pool: pot = buyIn × memberCount, alive members split it.
+ * Money is the single game pot: anyone still in this group is a game-survivor,
+ * so their potential share is the game share; eliminated get 0 (unless the
+ * whole game is out, when the pot splits equally among everyone).
  */
 export const getLeaderboards = cache(
   async (): Promise<Record<string, LeaderboardEntry[]>> => {
     const ctx = await getAuthedContext();
     if (!ctx) return {};
 
-    const { data, error } = await ctx.supabase
-      .from('pool_members')
-      .select('id, user_id, status, eliminated_at, pool_id, pools!inner(group_key, buy_in), profiles(display_name), picks(stage, result)')
-      .not('pools.group_key', 'is', null);
+    const [{ data, error }, gamePot] = await Promise.all([
+      ctx.supabase
+        .from('pool_members')
+        .select('id, user_id, status, eliminated_at, pool_id, pools!inner(group_key), profiles(display_name), picks(stage, result)')
+        .not('pools.group_key', 'is', null),
+      getGamePot(),
+    ]);
     if (error) {
       console.error('getLeaderboards query failed:', error);
       return {};
     }
 
     const byGroup = new Map<string, GroupLeaderboardRow[]>();
-    const buyInByGroup = new Map<string, number>();
     for (const row of (data ?? []) as unknown as GroupLeaderboardRow[]) {
       const pool = embedded(row.pools);
       if (!pool?.group_key) continue;
       const list = byGroup.get(pool.group_key) ?? [];
       list.push(row);
       byGroup.set(pool.group_key, list);
-      buyInByGroup.set(pool.group_key, pool.buy_in);
     }
 
     const leaderboards: Record<string, LeaderboardEntry[]> = {};
     for (const [groupKey, rows] of byGroup) {
-      const summary = {
-        pot: (buyInByGroup.get(groupKey) ?? 0) * rows.length,
-        aliveCount: rows.filter((r) => r.status === 'alive').length,
-        wonCount: rows.filter((r) => r.status === 'won').length,
-        totalPlayers: rows.length,
-      };
       leaderboards[groupKey] = sortEntries(
-        rows.map((r) => toLeaderboardEntry(r, summary, ctx.user.id)),
+        rows.map((r) => {
+          const entry = toLeaderboardEntry(r, null, ctx.user.id);
+          entry.potShare =
+            gamePot.survivors === 0 || r.status !== 'eliminated' ? gamePot.share : 0;
+          return entry;
+        }),
       );
     }
     return leaderboards;
@@ -420,13 +557,12 @@ export async function getProfileData(): Promise<ProfileData | null> {
   const ctx = await getAuthedContext();
   if (!ctx) return null;
 
-  const [profile, tracks, summaries, membership, globalSummary, matchRows] =
+  const [profile, tracks, membership, gamePot, matchRows] =
     await Promise.all([
       ctx.repos.users.findById(ctx.user.id),
       getUserTracks(),
-      getGroupPoolSummaries(),
       getMemberWithPicks(),
-      getGlobalPoolSummary(),
+      getGamePot(),
       getMatchStageRows(),
     ]);
   if (!profile) return null;
@@ -437,24 +573,23 @@ export async function getProfileData(): Promise<ProfileData | null> {
 
   let totalPicks = 0;
   let totalWins = 0;
-  let combinedPotShare = 0;
   for (const t of trackList) {
     const results = Object.values(t.pickResults);
     totalPicks += results.length;
     totalWins += results.filter((r) => r === 'won').length;
-    const s = summaries.get(t.poolId);
-    combinedPotShare += potShare(
-      t.status,
-      s
-        ? { pot: s.pot, aliveCount: s.alive_count, wonCount: s.won_count, totalPlayers: s.total_players }
-        : null,
-    );
   }
 
   const globalPicks = membership?.picks ?? [];
   totalPicks += globalPicks.length;
   totalWins += globalPicks.filter((p) => p.result === 'won').length;
-  const globalShare = potShare(membership?.member.status, globalSummary);
+
+  // One pot: a player's potential winnings is the game share while they're
+  // still in (≥1 track alive/redemption). Once everyone is out the pot splits
+  // equally — getGamePot already returns that equal share.
+  const isGameAlive = trackList.some(
+    (t) => t.status === 'alive' || t.status === 'redemption',
+  );
+  const gameShare = gamePot.survivors === 0 || isGameAlive ? gamePot.share : 0;
 
   // Overall tournament stage: first stage in canonical order with an
   // unfinished cached match; 'F' once everything is decided, MD1 when the
@@ -478,12 +613,12 @@ export async function getProfileData(): Promise<ProfileData | null> {
     picksMade: totalPicks,
     wins: totalWins,
     currentStage,
-    potShare: combinedPotShare + globalShare,
+    potShare: gameShare,
     tracksAlive: trackList.filter((t) => t.status !== 'eliminated').length,
     tracksTotal: GROUP_KEYS.length,
     totalPicks,
     totalWins,
-    combinedPotShare,
+    combinedPotShare: gameShare,
     tracks: trackSummaries,
   };
 }

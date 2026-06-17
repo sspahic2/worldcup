@@ -42,12 +42,25 @@ async function run(request: NextRequest) {
       membersAutoEliminated = autoOut ?? 0;
     }
 
+    // Materialise knockout lives: one per group a player survived. Idempotent,
+    // so it's safe to run every cron as more groups close out.
+    let knockoutLivesCreated = 0;
+    const { data: livesCreated, error: livesError } = await createAdminClient().rpc(
+      'create_knockout_lives',
+    );
+    if (livesError) {
+      console.error('[cron/resolve-matches] knockout-lives creation failed:', livesError);
+    } else {
+      knockoutLivesCreated = livesCreated ?? 0;
+    }
+
     return NextResponse.json({
       ok: true,
       sync,
       resolution,
       catchupPicksAssigned,
       membersAutoEliminated,
+      knockoutLivesCreated,
       ranAt: new Date().toISOString(),
     });
   } catch (e) {

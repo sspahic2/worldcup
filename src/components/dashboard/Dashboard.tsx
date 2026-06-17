@@ -15,6 +15,7 @@ import { STAGE_LABELS, TEAMS } from '@/lib/data/teams';
 import { usedTeams } from '@/lib/picks/pick-codes';
 import { lockTimeFor } from '@/lib/picks/lock-rules';
 import type { UserPool } from '@/types';
+import type { GamePot } from '@/lib/pool-data';
 import type { MatchInfo, TeamInfo } from '@/lib/adapters/types';
 
 type UpcomingMatch = {
@@ -31,6 +32,8 @@ type UpcomingMatch = {
 interface DashboardProps {
   groupKey: string;
   pool: UserPool;
+  /** The single game-wide pot (one buy-in per player), shown across all groups. */
+  gamePot?: GamePot;
   /** The user's pending pick for the current stage, if any. */
   stagePick?: string | null;
   groupTeams: TeamInfo[];
@@ -49,6 +52,7 @@ interface DashboardProps {
 export function Dashboard({
   groupKey,
   pool,
+  gamePot,
   stagePick,
   groupTeams,
   groupMatches,
@@ -69,13 +73,13 @@ export function Dashboard({
   // excluded so the user can still change it (or keep it) before lock.
   const burnedTeams = usedTeams(pool.picks, pool.stage);
 
-  // Pot splits between alive members only (redemption members have no share) —
-  // same rule as the leaderboard and profile pot shares.
-  // TODO: swap to the shared `potShare` helper from '@/lib/pool-data' once it
-  // is exported and consumable from a client component (pool-data currently
-  // pulls in the server-only Supabase client).
-  const splitCount = aliveCount > 0 ? aliveCount : pool.survivors;
-  const aliveShare = splitCount > 0 ? Math.round(pool.pot / splitCount) : 0;
+  // One game-wide pot (single buy-in per player). Pot, players and survivors
+  // are game-level — not per-group — and split among the players still in the
+  // game. Falls back to the group pool only if the game pot wasn't supplied.
+  const potTotal = gamePot?.pot ?? pool.pot;
+  const playerCount = gamePot?.players ?? pool.players;
+  const splitCount = gamePot?.survivors ?? (aliveCount > 0 ? aliveCount : pool.survivors);
+  const aliveShare = gamePot?.share ?? (splitCount > 0 ? Math.round(potTotal / splitCount) : 0);
 
   // The "now" snapshot is taken once on mount; PickFlow and the server
   // re-check lock state in real time.
@@ -188,12 +192,12 @@ export function Dashboard({
                 : 'var(--surface)',
             }}
           >
-            <div className="eyebrow">Pot</div>
+            <div className="eyebrow">Pot &middot; whole game</div>
             <div style={{ marginTop: 8 }}>
-              <PotCounter value={pool.pot} size={desktop ? 'xl' : 'md'} />
+              <PotCounter value={potTotal} size={desktop ? 'xl' : 'md'} />
             </div>
             <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 12 }}>
-              <span className="mono">{pool.players}</span> players &middot;{' '}
+              <span className="mono">{playerCount}</span> players &middot;{' '}
               <span className="mono">${pool.buyIn}</span> buy-in &middot; Split {splitCount} ways ={' '}
               <span className="mono" style={{ color: 'var(--ink)', fontWeight: 600 }}>
                 ${aliveShare.toLocaleString()}
@@ -201,13 +205,13 @@ export function Dashboard({
             </div>
           </div>
           <div className="card" style={{ padding: desktop ? 24 : 16 }}>
-            <div className="eyebrow">Survivors</div>
+            <div className="eyebrow">Survivors &middot; game</div>
             <div className="display mono" style={{ fontSize: desktop ? 56 : 36, marginTop: 8 }}>
-              {pool.survivors}
-              <span style={{ fontSize: '0.5em', color: 'var(--ink-3)' }}>/{pool.players}</span>
+              {splitCount}
+              <span style={{ fontSize: '0.5em', color: 'var(--ink-3)' }}>/{playerCount}</span>
             </div>
             <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 6 }}>
-              {Math.round((pool.survivors / pool.players) * 100)}% still in
+              {playerCount > 0 ? Math.round((splitCount / playerCount) * 100) : 0}% still in
             </div>
           </div>
           <div className="card" style={{ padding: desktop ? 24 : 16 }}>
