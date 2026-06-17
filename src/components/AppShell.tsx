@@ -25,6 +25,7 @@ import { EmptyState } from '@/components/states/EmptyState';
 import { Redemption } from '@/components/pick/Redemption';
 import { AccessDenied } from '@/components/states/AccessDenied';
 import type { UserPool, GroupTrack, LeaderboardEntry, ProfileData } from '@/types';
+import type { GamePot } from '@/lib/pool-data';
 
 type MatchData = {
   id?: number;
@@ -59,6 +60,8 @@ interface AppShellProps {
   initialPool?: UserPool | null;
   /** The user's 12 per-group survivor tracks, keyed by group key ('A'..'L'). */
   initialTracks?: Record<string, GroupTrack>;
+  /** The single game-wide pot (one buy-in per player). */
+  initialGamePot?: GamePot;
   initialLeaderboard?: LeaderboardEntry[];
   /** Per-group leaderboards, keyed by group key. */
   initialGroupLeaderboards?: Record<string, LeaderboardEntry[]>;
@@ -68,6 +71,7 @@ interface AppShellProps {
 export function AppShell({
   initialPool,
   initialTracks,
+  initialGamePot,
   initialLeaderboard,
   initialGroupLeaderboards,
   initialProfile,
@@ -301,6 +305,7 @@ export function AppShell({
         <Dashboard
           groupKey={groupKey}
           pool={activePool}
+          gamePot={initialGamePot}
           stagePick={stagePick}
           groupTeams={groupTeams}
           groupMatches={groupMatches}

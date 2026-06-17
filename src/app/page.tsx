@@ -9,6 +9,7 @@ import { getAuthUser } from '@/lib/repositories/get-auth-user';
 import {
   getCurrentUserPool,
   getUserTracks,
+  getGamePot,
   getLeaderboard,
   getLeaderboards,
   getProfileData,
@@ -47,12 +48,13 @@ export default async function Home({
     redirect(`/auth/callback?code=${encodeURIComponent(code)}`);
   }
 
-  const [competitionData, authUser, pool, tracks, leaderboard, groupLeaderboards, profile] =
+  const [competitionData, authUser, pool, tracks, gamePot, leaderboard, groupLeaderboards, profile] =
     await Promise.all([
       getCompetitionDataSafe(),
       getAuthUser(),
       getCurrentUserPool(),
       getUserTracks(),
+      getGamePot(),
       getLeaderboard(),
       getLeaderboards(),
       getProfileData(),
@@ -65,6 +67,7 @@ export default async function Home({
           <AppShell
             initialPool={pool}
             initialTracks={tracks}
+            initialGamePot={gamePot}
             initialLeaderboard={leaderboard}
             initialGroupLeaderboards={groupLeaderboards}
             initialProfile={profile}
