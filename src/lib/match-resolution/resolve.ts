@@ -8,6 +8,9 @@ export interface ResolveResult {
 
 interface CachedMatch {
   fd_match_id: number;
+  group_key: string | null;
+  stage: string;
+  status: string;
   home_team_tla: string;
   away_team_tla: string;
   winner: 'HOME_TEAM' | 'AWAY_TEAM' | 'DRAW' | null;
@@ -20,11 +23,20 @@ interface PendingPick {
   team_code: string;
 }
 
+const GROUP_STAGES = new Set(['MD1', 'MD2', 'MD3']);
+
 /**
  * Resolve pending picks against finished matches.
  *
- * - pick.team_code matches winner → result = 'won'
- * - pick.team_code is loser or draw → result = 'lost'; member → eliminated
+ * Decisive match (HOME/AWAY winner):
+ *   - pick.team_code is the winner → 'won'
+ *   - pick.team_code is the loser  → 'lost'; member eliminated in that pool.
+ *
+ * Drawn match (group stage): a draw normally eliminates you, EXCEPT when BOTH
+ * of the group's games that week are draws — then everyone who played the week
+ * survives (no team could have won). A drawn pick stays PENDING until both of
+ * the group+matchday's games have finished, so the exception can be evaluated.
+ * Knockout draws don't occur (extra time / penalties decide a winner).
  *
  * Idempotent: only operates on picks with result='pending', so re-runs are safe.
  */
@@ -33,24 +45,33 @@ export async function resolvePicks(): Promise<ResolveResult> {
 
   const { data: matches, error: matchErr } = await supabase
     .from('match_cache')
-    .select('fd_match_id, home_team_tla, away_team_tla, winner')
-    .eq('status', 'FINISHED');
+    .select('fd_match_id, group_key, stage, status, home_team_tla, away_team_tla, winner');
   if (matchErr) throw matchErr;
 
-  const finished = (matches ?? []) as CachedMatch[];
-  if (finished.length === 0) return { picksResolved: 0, membersEliminated: 0 };
+  const all = (matches ?? []) as CachedMatch[];
+  if (all.length === 0) return { picksResolved: 0, membersEliminated: 0 };
+
+  // group+stage → its matches (a group week has 2 games) for the 2-draws rule.
+  const byGroupStage = new Map<string, CachedMatch[]>();
+  for (const m of all) {
+    if (m.group_key == null) continue;
+    const key = `${m.group_key}|${m.stage}`;
+    const list = byGroupStage.get(key);
+    if (list) list.push(m);
+    else byGroupStage.set(key, [m]);
+  }
 
   let picksResolved = 0;
   let membersEliminated = 0;
   const notifications: ResolvedPickNotification[] = [];
 
-  for (const m of finished) {
-    if (!m.winner) continue;
+  for (const m of all) {
+    if (m.status !== 'FINISHED' || !m.winner) continue;
 
-    const winnerTla =
+    const decisiveWinnerTla =
       m.winner === 'HOME_TEAM' ? m.home_team_tla
       : m.winner === 'AWAY_TEAM' ? m.away_team_tla
-      : null;
+      : null; // DRAW
 
     const { data: picks, error: picksErr } = await supabase
       .from('picks')
@@ -60,7 +81,23 @@ export async function resolvePicks(): Promise<ResolveResult> {
     if (picksErr) throw picksErr;
 
     for (const p of (picks ?? []) as PendingPick[]) {
-      const won = winnerTla !== null && p.team_code === winnerTla;
+      let won: boolean;
+
+      if (decisiveWinnerTla !== null) {
+        // Decisive match — picked the winner or not.
+        won = p.team_code === decisiveWinnerTla;
+      } else if (GROUP_STAGES.has(m.stage) && m.group_key != null) {
+        // Drawn group-stage match. Wait for the whole week to finish, then the
+        // pick survives only if BOTH of the week's games were draws.
+        const week = byGroupStage.get(`${m.group_key}|${m.stage}`) ?? [m];
+        const weekFinished = week.every((g) => g.status === 'FINISHED');
+        if (!weekFinished) continue; // leave pending; decide once the week ends
+        won = week.every((g) => g.winner === 'DRAW');
+      } else {
+        // Knockout draw (shouldn't happen) — treat as a loss.
+        won = false;
+      }
+
       const result = won ? 'won' : 'lost';
 
       const { error: updPickErr } = await supabase

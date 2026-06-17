@@ -8,7 +8,9 @@ import { AuthProvider } from '@/lib/permissions/context';
 import { getAuthUser } from '@/lib/repositories/get-auth-user';
 import {
   getCurrentUserPool,
+  getUserTracks,
   getLeaderboard,
+  getLeaderboards,
   getProfileData,
 } from '@/lib/pool-data';
 
@@ -45,13 +47,16 @@ export default async function Home({
     redirect(`/auth/callback?code=${encodeURIComponent(code)}`);
   }
 
-  const [competitionData, authUser, pool, leaderboard, profile] = await Promise.all([
-    getCompetitionDataSafe(),
-    getAuthUser(),
-    getCurrentUserPool(),
-    getLeaderboard(),
-    getProfileData(),
-  ]);
+  const [competitionData, authUser, pool, tracks, leaderboard, groupLeaderboards, profile] =
+    await Promise.all([
+      getCompetitionDataSafe(),
+      getAuthUser(),
+      getCurrentUserPool(),
+      getUserTracks(),
+      getLeaderboard(),
+      getLeaderboards(),
+      getProfileData(),
+    ]);
 
   return (
     <CompetitionDataProvider data={competitionData}>
@@ -59,7 +64,9 @@ export default async function Home({
         <Suspense>
           <AppShell
             initialPool={pool}
+            initialTracks={tracks}
             initialLeaderboard={leaderboard}
+            initialGroupLeaderboards={groupLeaderboards}
             initialProfile={profile}
           />
         </Suspense>

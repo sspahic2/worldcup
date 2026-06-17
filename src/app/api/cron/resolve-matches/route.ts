@@ -30,11 +30,24 @@ async function run(request: NextRequest) {
       catchupPicksAssigned = backfilled ?? 0;
     }
 
+    // Auto-loss: members with no pick for a fully-finished group stage are
+    // eliminated in that track. Runs after catch-up so late joiners are safe.
+    let membersAutoEliminated = 0;
+    const { data: autoOut, error: autoOutError } = await createAdminClient().rpc(
+      'eliminate_missing_picks',
+    );
+    if (autoOutError) {
+      console.error('[cron/resolve-matches] missing-pick elimination failed:', autoOutError);
+    } else {
+      membersAutoEliminated = autoOut ?? 0;
+    }
+
     return NextResponse.json({
       ok: true,
       sync,
       resolution,
       catchupPicksAssigned,
+      membersAutoEliminated,
       ranAt: new Date().toISOString(),
     });
   } catch (e) {

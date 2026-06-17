@@ -180,7 +180,8 @@ export function PickFlow({ match, usedTeams, currentPick, onConfirm, onRemove, o
             margin: 0,
           }}
         >
-          A draw eliminates you. Pick the side you&apos;re confident will win outright.
+          A draw eliminates you — unless both of the group&apos;s games that week
+          draw, then everyone survives. Pick the side you back to win outright.
         </p>
       </div>
 

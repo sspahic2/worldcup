@@ -24,7 +24,7 @@ import { WinnerState } from '@/components/states/WinnerState';
 import { EmptyState } from '@/components/states/EmptyState';
 import { Redemption } from '@/components/pick/Redemption';
 import { AccessDenied } from '@/components/states/AccessDenied';
-import type { UserPool, LeaderboardEntry, ProfileData } from '@/types';
+import type { UserPool, GroupTrack, LeaderboardEntry, ProfileData } from '@/types';
 
 type MatchData = {
   id?: number;
@@ -57,11 +57,21 @@ const TRANSIENT_VIEWS = new Set(['pick', 'confirmation', 'eliminated', 'winner',
 
 interface AppShellProps {
   initialPool?: UserPool | null;
+  /** The user's 12 per-group survivor tracks, keyed by group key ('A'..'L'). */
+  initialTracks?: Record<string, GroupTrack>;
   initialLeaderboard?: LeaderboardEntry[];
+  /** Per-group leaderboards, keyed by group key. */
+  initialGroupLeaderboards?: Record<string, LeaderboardEntry[]>;
   initialProfile?: ProfileData | null;
 }
 
-export function AppShell({ initialPool, initialLeaderboard, initialProfile }: AppShellProps = {}) {
+export function AppShell({
+  initialPool,
+  initialTracks,
+  initialLeaderboard,
+  initialGroupLeaderboards,
+  initialProfile,
+}: AppShellProps = {}) {
   const router = useRouter();
   const competitionData = useCompetitionData();
   const { user, loading, canVisit, signOut, isAuthenticated } = useAuth();
@@ -87,6 +97,30 @@ export function AppShell({ initialPool, initialLeaderboard, initialProfile }: Ap
   const [isDesktop, setIsDesktop] = useState(true);
 
   const pool: UserPool | null = initialPool ?? null;
+
+  // The selected group's survivor track. The group dashboard + pick flow run
+  // off THIS (its own MD1→MD2→MD3 stage, its own membership, picks, pot, and
+  // no-repeat set) — not the global pool, which carries knockouts only. Once a
+  // group's stage play is over (track.stage null) we fall back to the global
+  // (knockout) pool.
+  const track: GroupTrack | null = initialTracks?.[groupKey] ?? null;
+  const activePool: UserPool | null = useMemo(() => {
+    if (track && track.stage) {
+      return {
+        status: track.status,
+        stage: track.stage,
+        pot: track.pot,
+        survivors: track.survivors,
+        players: track.memberCount,
+        picks: track.picks,
+        pickResults: track.pickResults,
+        buyIn: track.memberCount > 0 ? Math.round(track.pot / track.memberCount) : 0,
+        poolId: track.poolId,
+        memberId: track.memberId,
+      };
+    }
+    return pool;
+  }, [track, pool]);
 
   useEffect(() => {
     if (!loading && isAuthenticated && view === 'landing') {
@@ -166,56 +200,56 @@ export function AppShell({ initialPool, initialLeaderboard, initialProfile }: Ap
   };
 
   const onConfirmPick = (team: string) => {
-    if (!pickMatch || !pool) return;
+    if (!pickMatch || !activePool) return;
     setPickError(null);
 
-    if (!pool.memberId) {
+    if (!activePool.memberId) {
       setPickError('No active membership');
       return;
     }
 
-    const stageKey = pool.stage;
+    const stageKey = activePool.stage;
     const fdMatchId = pickMatch.id;
 
     startTransition(async () => {
-      try {
-        await submitPick({
-          poolMemberId: pool.memberId!,
-          stage: stageKey,
-          teamCode: team,
-          fdMatchId,
-        });
-        setLastPick({ team, match: pickMatch });
-        setView('confirmation');
-        router.refresh();
-      } catch (e) {
-        setPickError(e instanceof Error ? e.message : 'Failed to submit pick');
+      const result = await submitPick({
+        poolMemberId: activePool.memberId!,
+        stage: stageKey,
+        teamCode: team,
+        fdMatchId,
+      });
+      if (!result.ok) {
+        setPickError(result.error);
+        return;
       }
+      setLastPick({ team, match: pickMatch });
+      setView('confirmation');
+      router.refresh();
     });
   };
 
   // The user's pick for the current stage, if any (lost picks carry an `_L` suffix).
-  const stagePick = pool ? currentStagePick(pool.picks, pool.stage) : null;
+  const stagePick = activePool ? currentStagePick(activePool.picks, activePool.stage) : null;
 
   const onRemovePick = () => {
-    if (!pool) return;
+    if (!activePool) return;
     setPickError(null);
 
-    if (!pool.memberId) {
+    if (!activePool.memberId) {
       setPickError('No active membership');
       return;
     }
 
-    const stageKey = pool.stage;
+    const stageKey = activePool.stage;
 
     startTransition(async () => {
-      try {
-        await deletePick({ poolMemberId: pool.memberId!, stage: stageKey });
-        setView('dashboard');
-        router.refresh();
-      } catch (e) {
-        setPickError(e instanceof Error ? e.message : 'Failed to remove pick');
+      const result = await deletePick({ poolMemberId: activePool.memberId!, stage: stageKey });
+      if (!result.ok) {
+        setPickError(result.error);
+        return;
       }
+      setView('dashboard');
+      router.refresh();
     });
   };
 
@@ -262,15 +296,15 @@ export function AppShell({ initialPool, initialLeaderboard, initialProfile }: Ap
         }
       }} desktop={isDesktop} />;
 
-    if (view === 'dashboard' && pool)
+    if (view === 'dashboard' && activePool)
       return (
         <Dashboard
           groupKey={groupKey}
-          pool={pool}
+          pool={activePool}
           stagePick={stagePick}
           groupTeams={groupTeams}
           groupMatches={groupMatches}
-          aliveCount={aliveCount}
+          aliveCount={track?.stage ? track.aliveCount : aliveCount}
           crestLookup={competitionData.crestLookup}
           teamLookup={competitionData.teamLookup}
           onPick={onPickMatch}
@@ -285,7 +319,7 @@ export function AppShell({ initialPool, initialLeaderboard, initialProfile }: Ap
       return (
         <PickFlow
           match={pickMatch}
-          usedTeams={pool ? usedTeams(pool.picks, pool.stage) : []}
+          usedTeams={activePool ? usedTeams(activePool.picks, activePool.stage) : []}
           currentPick={stagePick}
           onConfirm={onConfirmPick}
           onRemove={stagePick ? onRemovePick : undefined}
@@ -303,8 +337,8 @@ export function AppShell({ initialPool, initialLeaderboard, initialProfile }: Ap
         />
       );
 
-    if (view === 'bracket' && pool)
-      return <Bracket groupKey={groupKey} pool={pool} desktop={isDesktop} />;
+    if (view === 'bracket' && activePool)
+      return <Bracket groupKey={groupKey} pool={activePool} desktop={isDesktop} />;
 
     if (view === 'redemption' && pool)
       return (
@@ -320,7 +354,7 @@ export function AppShell({ initialPool, initialLeaderboard, initialProfile }: Ap
       return (
         <Leaderboard
           groupKey={groupKey}
-          entries={initialLeaderboard ?? []}
+          entries={initialGroupLeaderboards?.[groupKey] ?? initialLeaderboard ?? []}
           desktop={isDesktop}
         />
       );

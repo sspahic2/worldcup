@@ -14,6 +14,12 @@ export type Stage = 'MD1' | 'MD2' | 'MD3' | 'R32' | 'R16' | 'QF' | 'SF' | 'F';
 
 export type GroupKey = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L';
 
+export type PickResult = 'pending' | 'won' | 'lost';
+
+/**
+ * The user's global (knockout) pool membership. During knockouts a single
+ * pick per round lives here; group-stage picks live in GroupTrack.
+ */
 export interface UserPool {
   status: PoolStatus;
   stage: Stage;
@@ -21,11 +27,44 @@ export interface UserPool {
   survivors: number;
   players: number;
   picks: Partial<Record<Stage, string | null>>;
+  /** Raw result per stage; `picks` carries the legacy `_L` suffix for losses. */
+  pickResults?: Partial<Record<Stage, PickResult>>;
   buyIn: number;
   eliminatedAt?: string;
   hero?: boolean;
   poolId?: string;
   memberId?: string;
+}
+
+/**
+ * One of the user's 12 per-group survivor tracks (group stage, MD1-MD3).
+ * Each track is its own pool: its own pot, picks, and elimination.
+ */
+export type GroupTrack = {
+  groupKey: string;
+  poolId: string;
+  memberId: string;
+  status: PoolStatus;
+  /**
+   * Current stage FOR THIS GROUP: first of MD1-MD3 with any unfinished
+   * cached match for the group; null once the group's stage play is over.
+   */
+  stage: Stage | null;
+  /** Team code per stage; lost picks carry the `_L` suffix (UI convention). */
+  picks: Partial<Record<Stage, string>>;
+  pickResults: Partial<Record<Stage, PickResult>>;
+  pot: number;
+  aliveCount: number;
+  memberCount: number;
+  /** alive + redemption — players still in this track. */
+  survivors: number;
+};
+
+/** Compact per-track line for the profile grid. */
+export interface TrackSummary {
+  groupKey: string;
+  status: PoolStatus;
+  stage: Stage | null;
 }
 
 export interface LeaderboardEntry {
@@ -41,11 +80,26 @@ export interface LeaderboardEntry {
 export interface ProfileData {
   displayName: string;
   username: string | null;
+  /** Global (knockout) pool membership status; null when not a member. */
   status: PoolStatus | null;
+  /** Legacy alias of totalPicks — kept for existing UI. */
   picksMade: number;
+  /** Legacy alias of totalWins — kept for existing UI. */
   wins: number;
+  /** Overall tournament stage (first stage with unfinished matches). */
   currentStage: string;
+  /** Total potential winnings: combinedPotShare + global-pool share. */
   potShare: number;
+  /** Tracks not yet eliminated, out of tracksTotal. */
+  tracksAlive: number;
+  tracksTotal: number;
+  /** All picks across the 12 group tracks + the global pool. */
+  totalPicks: number;
+  totalWins: number;
+  /** Sum of per-track pot shares across surviving (alive/won) tracks. */
+  combinedPotShare: number;
+  /** Per-track summary for the profile grid, sorted A-L. */
+  tracks: TrackSummary[];
 }
 
 export interface Match {
@@ -74,7 +128,7 @@ export interface DbUser {
 export interface DbPool {
   id: string;
   name: string;
-  group_key: GroupKey;
+  group_key: GroupKey | null; // null = the global knockout pool
   buy_in: number;
   invite_code: string;
   created_by: string;

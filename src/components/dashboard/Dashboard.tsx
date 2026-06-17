@@ -13,6 +13,7 @@ import { MatchCard } from './MatchCard';
 import { PickTimeline } from './PickTimeline';
 import { STAGE_LABELS, TEAMS } from '@/lib/data/teams';
 import { usedTeams } from '@/lib/picks/pick-codes';
+import { lockTimeFor } from '@/lib/picks/lock-rules';
 import type { UserPool } from '@/types';
 import type { MatchInfo, TeamInfo } from '@/lib/adapters/types';
 
@@ -61,6 +62,9 @@ export function Dashboard({
   desktop,
 }: DashboardProps) {
   const stageLabel = STAGE_LABELS[pool.stage] || pool.stage;
+  // A lost pick eliminates the track: no more picks in this group. The pick
+  // UI is replaced by an "Out" panel (the server also rejects the submit).
+  const isOut = pool.status === 'eliminated';
   // Teams burned in *previous* stages. The current stage's own pick is
   // excluded so the user can still change it (or keep it) before lock.
   const burnedTeams = usedTeams(pool.picks, pool.stage);
@@ -73,20 +77,36 @@ export function Dashboard({
   const splitCount = aliveCount > 0 ? aliveCount : pool.survivors;
   const aliveShare = splitCount > 0 ? Math.round(pool.pot / splitCount) : 0;
 
-  // Real, still-pickable fixtures for the current stage: not started yet and
-  // sorted by kickoff so the countdown targets the next match. Picks are
-  // never offered without a real match id. The "now" snapshot is taken once
-  // on mount; PickFlow and the server re-check lock state in real time.
+  // The "now" snapshot is taken once on mount; PickFlow and the server
+  // re-check lock state in real time.
   const [nowMs] = useState(() => Date.now());
-  const upcoming: UpcomingMatch[] = groupMatches
-    .filter(
-      (m) =>
-        m.stage === pool.stage &&
-        m.homeTeam &&
-        m.awayTeam &&
-        (m.status === 'SCHEDULED' || m.status === 'TIMED') &&
-        new Date(m.utcDate).getTime() > nowMs,
-    )
+  const isGroupStage = pool.stage.startsWith('MD');
+
+  // Both of this group's games for the current matchday (a "week" has 2).
+  const stageMatches = groupMatches.filter(
+    (m) => m.stage === pool.stage && m.homeTeam && m.awayTeam,
+  );
+  // Group week locks when its FIRST game kicks off (rule: lock the whole
+  // matchday before its first game). Knockouts keep a per-match lock.
+  const weekFirstUtc = stageMatches.reduce<string | undefined>(
+    (min, m) => (min === undefined || new Date(m.utcDate) < new Date(min) ? m.utcDate : min),
+    undefined,
+  );
+  const weekLocked =
+    isGroupStage && weekFirstUtc ? nowMs >= lockTimeFor(weekFirstUtc).getTime() : false;
+  // Pickable fixtures. Group stage: BOTH games of the week (all 4 teams) until
+  // the week locks, then none. Knockout: per-match, future games only. Picks
+  // are never offered without a real match id.
+  const pickable = isGroupStage
+    ? weekLocked
+      ? []
+      : stageMatches.filter((m) => m.status === 'SCHEDULED' || m.status === 'TIMED')
+    : stageMatches.filter(
+        (m) =>
+          (m.status === 'SCHEDULED' || m.status === 'TIMED') &&
+          new Date(m.utcDate).getTime() > nowMs,
+      );
+  const upcoming: UpcomingMatch[] = pickable
     .sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime())
     .map((m) => ({
       id: typeof m.id === 'number' ? m.id : undefined,
@@ -99,8 +119,16 @@ export function Dashboard({
       knockout: !pool.stage.startsWith('MD'),
     }));
 
+  // Countdown target: for a group week it's the lock (first game) until it
+  // locks; for knockouts it's the next pickable match.
+  const countdownUtc = isGroupStage
+    ? weekLocked
+      ? undefined
+      : weekFirstUtc
+    : upcoming[0]?.utcDate;
+
   // The fixture the current pick belongs to, so the indicator card can jump
-  // straight back into PickFlow (change/remove live there).
+  // straight back into PickFlow (change/remove live there). Hidden once locked.
   const pickedMatch = stagePick
     ? upcoming.find((m) => m.a === stagePick || m.b === stagePick)
     : undefined;
@@ -242,10 +270,47 @@ export function Dashboard({
       <div style={{ display: 'grid', gridTemplateColumns: desktop ? '1.6fr 1fr' : '1fr', gap: desktop ? 24 : 20 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
+            {isOut ? (
+              <>
+                <SectionHeader eyebrow="Group stage" title={`Group ${groupKey}`} />
+                <Card
+                  className="ring-0 rounded-[14px] bg-surface"
+                  style={{ border: '1px solid color-mix(in oklab, var(--redemption) 40%, var(--border))' }}
+                >
+                  <CardContent className="p-6 flex items-center gap-4">
+                    <div
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 12,
+                        background: 'color-mix(in oklab, var(--redemption) 16%, transparent)',
+                        color: 'var(--redemption)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon name="flame" size={22} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="display" style={{ fontSize: 22, lineHeight: 1.1 }}>
+                        You&apos;re out of Group {groupKey}
+                      </div>
+                      <p className="text-[13px] text-ink-3 mt-1.5 mb-0">
+                        A losing pick ends your run in this group — no more picks here. Your
+                        other groups are unaffected; switch groups to keep playing.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+            <>
             <SectionHeader
               eyebrow="Next"
               title={`Your ${pool.stage} Pick`}
-              right={upcoming[0]?.utcDate ? <Countdown kickoffUtc={upcoming[0].utcDate} /> : undefined}
+              right={countdownUtc ? <Countdown kickoffUtc={countdownUtc} /> : undefined}
             />
             {stagePick && (
               <Card
@@ -299,6 +364,19 @@ export function Dashboard({
                   />
                 ))}
               </div>
+            ) : weekLocked ? (
+              <Card className="ring-0 border-survive-border bg-surface rounded-[14px]">
+                <CardContent className="p-6 text-center">
+                  <div className="display" style={{ fontSize: 22 }}>
+                    {stagePick ? 'Picks locked' : 'Matchday locked'}
+                  </div>
+                  <p className="text-[13px] text-ink-3 mt-2 mb-0">
+                    {stagePick
+                      ? `${stageLabel} locked when its first game kicked off. Results land after the games.`
+                      : `${stageLabel} locked when its first game kicked off — no pick made for Group ${groupKey} this week.`}
+                  </p>
+                </CardContent>
+              </Card>
             ) : (
               <Card className="ring-0 border-survive-border bg-surface rounded-[14px]">
                 <CardContent className="p-6 text-center">
@@ -311,6 +389,8 @@ export function Dashboard({
                   </p>
                 </CardContent>
               </Card>
+            )}
+            </>
             )}
           </div>
 

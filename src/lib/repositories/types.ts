@@ -36,7 +36,8 @@ export type PoolStatus = 'open' | 'active' | 'completed' | 'cancelled';
 export interface Pool {
   id: string;
   name: string;
-  groupKey: string;
+  /** 'A'..'L' for group-track pools; null for the global knockout pool. */
+  groupKey: string | null;
   buyIn: number;
   inviteCode: string;
   status: PoolStatus;

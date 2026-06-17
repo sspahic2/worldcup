@@ -23,7 +23,7 @@ type ProfileRow = {
 type PoolRow = {
   id: string;
   name: string;
-  group_key: string;
+  group_key: string | null;
   buy_in: number;
   invite_code: string;
   status: PoolStatus;
@@ -54,7 +54,7 @@ type PickRow = {
 type PoolSummaryRow = {
   pool_id: string;
   name: string;
-  group_key: string;
+  group_key: string | null;
   buy_in: number;
   invite_code: string;
   pool_status: PoolStatus;
