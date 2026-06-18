@@ -22,6 +22,8 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(
     searchParams.get('error') === 'auth_failed' ? 'Sign-in failed. Please try again.' : null
   );
@@ -59,6 +61,24 @@ function LoginForm() {
     }
   };
 
+  // Code path: rescues users whose link opened in an in-app browser (Gmail
+  // app). They type the 6-digit code here, in their real browser, and the
+  // session is set in *this* browser — not the email client's WebView.
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = code.replace(/\s/g, '');
+    if (token.length < 6) return;
+    setVerifying(true);
+    setError(null);
+    try {
+      await authService.verifyEmailOtp(email, token);
+      window.location.replace('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid or expired code');
+      setVerifying(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg p-4">
       <Card className="w-full max-w-md ring-0 border-survive-border bg-surface rounded-2xl">
@@ -74,12 +94,44 @@ function LoginForm() {
             <div className="text-center flex flex-col gap-3">
               <h1 className="display text-2xl">Check your email</h1>
               <p className="text-sm text-ink-3">
-                We sent a magic link to <span className="text-ink font-semibold">{email}</span>.
-                Click it to sign in.
+                We sent a magic link and a 6-digit code to{' '}
+                <span className="text-ink font-semibold">{email}</span>.
+                Tap the link, or enter the code below.
               </p>
+
+              {/* Code path — works even if the link opened in the Gmail app's
+                  in-app browser. Typing the code here signs you in *here*. */}
+              <form onSubmit={handleVerifyCode} className="flex flex-col gap-3 mt-1">
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="Enter 6-digit code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  disabled={verifying}
+                  className="h-12 bg-bg-2 border-survive-border text-center tracking-[0.4em] text-lg"
+                />
+                <Button
+                  type="submit"
+                  disabled={verifying || code.replace(/\s/g, '').length < 6}
+                  className="w-full gap-3 h-12 text-sm font-semibold"
+                >
+                  {verifying ? 'Verifying…' : 'Verify code'}
+                </Button>
+              </form>
+
+              {error && (
+                <div className="text-xs text-center text-redemption bg-redemption/10 rounded-lg px-3 py-2">
+                  {error}
+                </div>
+              )}
+
               <button
                 type="button"
-                onClick={() => { setSent(false); setEmail(''); }}
+                onClick={() => { setSent(false); setEmail(''); setCode(''); setError(null); }}
                 className="text-xs text-ink-4 underline hover:text-ink-2 mt-2"
               >
                 Use a different email
