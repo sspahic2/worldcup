@@ -55,6 +55,16 @@ export const supabaseAuthService: AuthService = {
     if (error) throw error;
   },
 
+  async verifyEmailOtp(email: string, token: string) {
+    const supabase = createClient();
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token: token.trim(),
+      type: 'email',
+    });
+    if (error) throw error;
+  },
+
   async signOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
